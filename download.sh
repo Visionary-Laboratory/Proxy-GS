@@ -1,0 +1,10 @@
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_1_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_2_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_3_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_4_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_5_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_6_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_7_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_8_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/aerial/test/block_9_test.tar  --repo-type dataset --local-dir ./
+huggingface-cli download BoDai/MatrixCity small_city/street/test/small_city_road_horizon_test.tar --repo-type dataset --local-dir ./

@@ -1,0 +1,54 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Train",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "args": [
+                "--eval",
+                "-s","data/small_city/aerial/pose/block_E",
+                "-m", "ouputs/Block-E-test",
+                "--ply_path", "data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply"
+                // "--use_wandb"
+            ],
+        },
+        {
+            "name": "render",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/render.py",
+            "args": [
+                "-m", "ouputs/Block-E-Horizon_add_1",
+                // "--use_wandb"
+                "--skip_test",
+                "--ply_path", "data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_A.ply",
+            ],
+        },
+        {
+            "name": "render_real",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/render_real.py",
+            "args": [
+                "-m", "ouputs/Block-E-Horizon_add_1",
+                // "--use_wandb"
+                "-s", "data/small_city/street/pose/block_E",
+                "--skip_test",
+                "--ply_path", "data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_A.ply",
+            ],
+        },
+        {
+            "name": "metrics",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/metrics.py",
+            "args": [
+                "-m", "outputs/alameda-3stats-new",
+                // "--use_wandb"
+                // "--skip_train"
+            ],
+        }
+    ]
+}
