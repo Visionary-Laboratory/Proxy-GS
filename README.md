@@ -29,7 +29,7 @@ This repo contains official implementations of Proxy-GS, ⭐ us if you like it!
 - 🔥🔥 News: ```2025/6/28```: CityGS-X has been accepted to ICCV 2025. -->
   
 ## Todo List
-- 🔥🔥 News: ```2026/2/26```: Proxy-GS has been accepted to CVPR 2026. -->
+- 🔥🔥 News: ```2026/2/26```: Proxy-GS has been accepted to CVPR 2026.
 - [ ] Release the training & inference code of Proxy-GS.
 - [ ] Release all model checkpoints.
 
