@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/arXiv-2509.24421-b31b1b" alt="arXiv">
 </a>
 <!-- alt="arXiv"></a> -->
-<a href="https://gyy456.github.io/Proxy-GS/"><img src="https://img.shields.io/badge/Project_Page-green" alt="Project Page"></a>
+<a href="https://visionary-laboratory.github.io/Proxy-GS/"><img src="https://img.shields.io/badge/Project_Page-green" alt="Project Page"></a>
 
 
 <!-- **Northwestern Polytechnical University**; **Shanghai Artificial Intelligence Laboratory** -->
