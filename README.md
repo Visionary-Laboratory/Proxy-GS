@@ -31,7 +31,7 @@ This repo contains official implementations of Proxy-GS, ⭐ us if you like it!
 ## Todo List
 - 🔥🔥 News: ```2026/2/26```: Proxy-GS has been accepted to CVPR 2026.
 - [ ] Release the training & inference code of Proxy-GS.
-- [ ] Release all model checkpoints.
+- [ ] Release all model checkpoints. 
 
 
 
