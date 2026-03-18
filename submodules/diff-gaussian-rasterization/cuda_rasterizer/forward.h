@@ -69,13 +69,14 @@ namespace FORWARD
 		const float* viewmatrix,
 		const float* projmatrix,
 		const int W, int H,
-		const float* depth_mesh,
+		cudaTextureObject_t depth_mesh,
 		const float focal_x, float focal_y,
 		const float tan_fovx, float tan_fovy,
 		int* radii,
 		float* cov3Ds,
 		const dim3 grid,
-		bool prefiltered);
+		bool prefiltered,
+		const bool* point_mask);
 }
 
 

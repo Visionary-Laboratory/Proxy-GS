@@ -466,7 +466,7 @@ def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch
     )
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
-    means3D = pc.get_anchor[pc._anchor_mask]
+    means3D = pc.get_anchor
 
     # If precomputed 3d covariance is provided, use it. If not, then it will be computed from
     # scaling / rotation by the rasterizer.
@@ -482,10 +482,10 @@ def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch
     radii_pure = rasterizer.visible_filter(means3D = means3D,
         scales = scales[:,:3],
         rotations = rotations,
-        cov3D_precomp = cov3D_precomp)
+        cov3D_precomp = cov3D_precomp,
+        point_mask = pc._anchor_mask)
     
-    visible_mask = pc._anchor_mask.clone()
-    visible_mask[pc._anchor_mask] = radii_pure > 0
+    visible_mask = (radii_pure > 0)#&pc._anchor_mask        
     # end = time.time()
     # print("Prefiltering time: ", end - start)
 

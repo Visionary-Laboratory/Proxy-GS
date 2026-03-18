@@ -13,6 +13,7 @@
 #include "auxiliary.h"
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+#include <cuda_runtime_api.h> 
 namespace cg = cooperative_groups;
 
 __device__ __constant__ float pi = 3.14159265358979323846f;
@@ -266,21 +267,22 @@ __global__ void preprocessCUDA(int P, int D, int M,
 // Perform initial steps for each Gaussian prior to rasterization.
 template<int C>
 __global__ void filter_preprocessCUDA(int P, int M,
-	const float* orig_points,
-	const glm::vec3* scales,
+	const float* __restrict__ orig_points,
+	const glm::vec3* __restrict__ scales,
 	const float scale_modifier,
-	const glm::vec4* rotations,
-	const float* cov3D_precomp,
-	const float* viewmatrix,
-	const float* projmatrix,
+	const glm::vec4* __restrict__ rotations,
+	const float* __restrict__ cov3D_precomp,
+	const float* __restrict__ viewmatrix,
+	const float* __restrict__ projmatrix,
 	const int W, int H,
-	const float* depth_mesh,
+	cudaTextureObject_t depth_mesh,
 	const float tan_fovx, float tan_fovy,
 	const float focal_x, float focal_y,
 	int* radii,
 	float* cov3Ds,
 	const dim3 grid,
-	bool prefiltered)
+	bool prefiltered,
+const bool* __restrict__ point_mask)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
@@ -289,6 +291,12 @@ __global__ void filter_preprocessCUDA(int P, int M,
 	// Initialize radius and touched tiles to 0. If this isn't changed,
 	// this Gaussian will not be processed further.
 	radii[idx] = 0;
+
+	if (!point_mask[idx])
+	{
+		return ;
+	}
+
 
 	// Perform near culling, quit if outside.
 	float3 p_view;
@@ -545,21 +553,22 @@ void FORWARD::preprocess(int P, int D, int M,
 
 
 void FORWARD::filter_preprocess(int P, int M,
-	const float* means3D,
-	const glm::vec3* scales,
+	const float* __restrict__ means3D,
+	const glm::vec3* __restrict__ scales,
 	const float scale_modifier,
-	const glm::vec4* rotations,
-	const float* cov3D_precomp,
-	const float* viewmatrix,
-	const float* projmatrix,
+	const glm::vec4* __restrict__ rotations,
+	const float* __restrict__ cov3D_precomp,
+	const float* __restrict__ viewmatrix,
+	const float* __restrict__ projmatrix,
 	const int W, int H,
-	const float* depth_mesh,
+	cudaTextureObject_t depth_mesh,
 	const float focal_x, float focal_y,
 	const float tan_fovx, float tan_fovy,
-	int* radii,
-	float* cov3Ds,
+	int* __restrict__ radii,
+	float* __restrict__ cov3Ds,
 	const dim3 grid,
-	bool prefiltered)
+	bool prefiltered,
+	const bool* __restrict__ point_mask)
 {
 
 	filter_preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
@@ -578,6 +587,7 @@ void FORWARD::filter_preprocess(int P, int M,
 		radii,
 		cov3Ds,
 		grid,
-		prefiltered
+		prefiltered,
+		point_mask
 		);
 }

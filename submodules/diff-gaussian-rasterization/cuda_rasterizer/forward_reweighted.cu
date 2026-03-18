@@ -279,7 +279,8 @@ __global__ void filter_preprocessCUDA(int P, int M,
 	int* radii,
 	float* cov3Ds,
 	const dim3 grid,
-	bool prefiltered)
+	bool prefiltered,
+	const bool* point_mask)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
@@ -288,6 +289,12 @@ __global__ void filter_preprocessCUDA(int P, int M,
 	// Initialize radius and touched tiles to 0. If this isn't changed,
 	// this Gaussian will not be processed further.
 	radii[idx] = 0;
+
+	// auto idx = cg::this_grid().thread_rank();
+	if (point_mask[idx])
+	{
+		return ;
+	}
 
 	// Perform near culling, quit if outside.
 	float3 p_view;
@@ -570,7 +577,8 @@ void FORWARD::filter_preprocess(int P, int M,
 	int* radii,
 	float* cov3Ds,
 	const dim3 grid,
-	bool prefiltered)
+	bool prefiltered,
+	const bool* point_mask)
 {
 
 	filter_preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
@@ -588,6 +596,7 @@ void FORWARD::filter_preprocess(int P, int M,
 		radii,
 		cov3Ds,
 		grid,
-		prefiltered
+		prefiltered,
+		point_mask
 		);
 }

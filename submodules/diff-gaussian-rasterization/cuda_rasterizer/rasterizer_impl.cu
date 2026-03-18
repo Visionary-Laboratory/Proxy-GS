@@ -30,6 +30,86 @@ namespace cg = cooperative_groups;
 #include "forward.h"
 #include "backward.h"
 
+
+cudaTextureObject_t CudaRasterizer::Rasterizer::s_depthTex   = 0;
+const float*        CudaRasterizer::Rasterizer::s_depthPtr   = nullptr;
+int                 CudaRasterizer::Rasterizer::s_depthW     = 0;
+int                 CudaRasterizer::Rasterizer::s_depthH     = 0;
+size_t              CudaRasterizer::Rasterizer::s_depthPitch = 0;
+int                 CudaRasterizer::Rasterizer::s_depthDevice= -1;
+
+// ---------- 工具实现 ----------
+inline cudaTextureObject_t
+CudaRasterizer::Rasterizer::makeDepthTextureFromLinear(
+    const float* depth_dev, int W, int H, size_t pitchBytes)
+{
+    cudaResourceDesc res{};
+    res.resType = cudaResourceTypePitch2D;
+    res.res.pitch2D.devPtr       = const_cast<float*>(depth_dev);
+    res.res.pitch2D.desc         = cudaCreateChannelDesc<float>();
+    res.res.pitch2D.width        = W;
+    res.res.pitch2D.height       = H;
+    res.res.pitch2D.pitchInBytes = pitchBytes;
+
+    cudaTextureDesc tex{};
+    tex.addressMode[0]   = cudaAddressModeClamp;
+    tex.addressMode[1]   = cudaAddressModeClamp;
+    tex.filterMode       = cudaFilterModePoint;
+    tex.readMode         = cudaReadModeElementType;
+    tex.normalizedCoords = 0;
+
+    cudaTextureObject_t t = 0;
+    cudaCreateTextureObject(&t, &res, &tex, nullptr);
+    return t;
+}
+
+cudaTextureObject_t
+CudaRasterizer::Rasterizer::getOrCreateDepthTex(
+    const float* depth_dev, int W, int H, size_t pitchBytes)
+{
+    int dev = -1;
+    cudaGetDevice(&dev);
+
+    // 只在 ①指针变 ②尺寸变 ③行跨度变 ④CUDA设备变 时重建
+    if (!s_depthTex ||
+        s_depthPtr   != depth_dev ||
+        s_depthW     != W        ||
+        s_depthH     != H        ||
+        s_depthPitch != pitchBytes ||
+        s_depthDevice!= dev)
+    {
+        if (s_depthTex) cudaDestroyTextureObject(s_depthTex);
+        s_depthTex    = makeDepthTextureFromLinear(depth_dev, W, H, pitchBytes);
+        s_depthPtr    = depth_dev;
+        s_depthW      = W;
+        s_depthH      = H;
+        s_depthPitch  = pitchBytes;
+        s_depthDevice = dev;
+    }
+    return s_depthTex;
+}
+
+void CudaRasterizer::Rasterizer::releaseDepthTexture()
+{
+    if (s_depthTex) {
+        cudaDestroyTextureObject(s_depthTex);
+        s_depthTex = 0;
+    }
+    s_depthPtr = nullptr;
+    s_depthW = s_depthH = 0;
+    s_depthPitch = 0;
+    s_depthDevice = -1;
+}
+
+// ★ 可选：注册一个进程退出时自动清理的守卫
+namespace {
+struct DepthTexGuard {
+    ~DepthTexGuard(){ CudaRasterizer::Rasterizer::releaseDepthTexture(); }
+} _depth_tex_guard;
+}
+
+
+
 // Helper function to find the next-highest bit of the MSB
 // on the CPU.
 uint32_t getHigherMsb(uint32_t n)
@@ -354,7 +434,8 @@ void CudaRasterizer::Rasterizer::visible_filter(
 	const float tan_fovx, float tan_fovy,
 	const bool prefiltered,
 	int* radii,
-	bool debug)
+	bool debug,
+	const bool* point_mask)
 {
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
@@ -370,11 +451,23 @@ void CudaRasterizer::Rasterizer::visible_filter(
 
 	dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	// dim3 block(BLOCK_X, BLOCK_Y, 1);
+	// auto idx = cg::this_grid().thread_rank();
+	// if (point_mask[idx])
+	// {
+	// 	radii[idx] = 0;
+	// 	return ;
+	// }
 
 	// Dynamically resize image-based auxiliary buffers during training
 	size_t img_chunk_size = required<ImageState>(width * height);
 	char* img_chunkptr = imageBuffer(img_chunk_size);
 	ImageState imgState = ImageState::fromChunk(img_chunkptr, width * height);
+
+    const size_t pitchBytes = (size_t)width * sizeof(float);
+
+    // ★ 只在发生变化时重建纹理对象
+    cudaTextureObject_t depthTex = getOrCreateDepthTex(depth_mesh, width, height, pitchBytes);
+
 
 	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
 	CHECK_CUDA(FORWARD::filter_preprocess(
@@ -386,13 +479,14 @@ void CudaRasterizer::Rasterizer::visible_filter(
 		cov3D_precomp,
 		viewmatrix, projmatrix,
 		width, height,
-		depth_mesh,
+		depthTex,
 		focal_x, focal_y,
 		tan_fovx, tan_fovy,
 		radii,
 		geomState.cov3D,
 		tile_grid,
-		prefiltered
+		prefiltered,
+		point_mask
 	), debug)
 
 }

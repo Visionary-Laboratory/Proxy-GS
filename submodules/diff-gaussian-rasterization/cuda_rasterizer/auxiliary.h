@@ -150,7 +150,7 @@ __forceinline__ __device__ bool in_frustum(int idx,
 	// Bring points to screen space
 	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
-	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
+	// float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 	p_view = transformPoint4x3(p_orig, viewmatrix);
 
 	if (p_view.z <= 0.0001f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
@@ -166,30 +166,30 @@ __forceinline__ __device__ bool in_frustum(int idx,
 }
 
 __forceinline__ __device__ bool in_frustum_depth(int idx,
-	const float* orig_points,
-	const float* viewmatrix,
-	const float* projmatrix,
+	const float* __restrict__ orig_points,
+	const float* __restrict__ viewmatrix,
+	const float*  __restrict__ projmatrix,
 	bool prefiltered,
 	float3& p_view,
-    const float* depth, int H, int W
+    cudaTextureObject_t depth, int H, int W
 )
 {
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 
 	// Bring points to screen space
 	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
-	float p_w = 1.0f / (p_hom.w + 0.0000001f);
-	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
+	// float p_w = 1.0f / (p_hom.w + 0.0000001f);
+	//float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 	p_view = transformPoint4x3(p_orig, viewmatrix);
 
 
 	if (p_view.z <= 0.0001f )// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
 	{
-		if (prefiltered)
-		{
-			printf("Point is filtered although prefiltered is set. This shouldn't happen!");
-			__trap();
-		}
+		// if (prefiltered)
+		// {
+		// 	printf("Point is filtered although prefiltered is set. This shouldn't happen!");
+		// 	__trap();
+		// }
 		return false;
 	}
 
@@ -210,9 +210,16 @@ __forceinline__ __device__ bool in_frustum_depth(int idx,
     if (u < 0 || u >= W || v < 0 || v >= H) {
         return true;
     }
+	
 
     // 读取深度；深度必须与 p_view.z 同“方向/单位”
-    float d = depth[v * W + u] + 0.3 ;
+    // float d = depth[v * W + u] * 1.2;
+    // const size_t didx = (size_t)v * (size_t)W + (size_t)u;
+    // float d;
+	// d = __ldg(depth + didx) * 1.2 ;
+
+	float d = tex2D<float>(depth, (float)u + 0.5f, (float)v + 0.5f) + 0.3;
+
     // if (!isfinite(d) || d <= 0.f) {
     //     // 无效深度：放行
     //     return true;
@@ -221,14 +228,17 @@ __forceinline__ __device__ bool in_frustum_depth(int idx,
 
     // 仅做深度比较：在前景后面 → 过滤
     if (p_view.z > d ) {
-        if (prefiltered) {
-            printf("Filtered by depth test, z=%f, d=%f\n", p_view.z, d);
-            __trap();
-        }
+        // if (prefiltered) {
+        //     printf("Filtered by depth test, z=%f, d=%f\n", p_view.z, d);
+        //     __trap();
+        // }
         return false;
     }
 	return true;
 }
+
+
+
 
 #define CHECK_CUDA(A, debug) \
 A; if(debug) { \

@@ -14,12 +14,27 @@
 
 #include <vector>
 #include <functional>
+#include <cuda_runtime_api.h>
 
 namespace CudaRasterizer
 {
 	class Rasterizer
 	{
 	public:
+
+	static cudaTextureObject_t s_depthTex;
+	static const float*        s_depthPtr;
+	static int                 s_depthW, s_depthH;
+	static size_t              s_depthPitch;
+	static int                 s_depthDevice; // 当前 CUDA 设备 id
+	static void releaseDepthTexture();
+	// ★ 工具：按需创建/复用纹理对象
+	static cudaTextureObject_t getOrCreateDepthTex(
+		const float* depth_dev, int W, int H, size_t pitchBytes);
+
+	// ★ 创建纹理对象的底层封装
+	static inline cudaTextureObject_t makeDepthTextureFromLinear(
+		const float* depth_dev, int W, int H, size_t pitchBytes);
 
 		static void markVisible(
 			int P,
@@ -70,7 +85,8 @@ namespace CudaRasterizer
 			const float tan_fovx, float tan_fovy,
 			const bool prefiltered,
 			int* radii,
-			bool debug);
+			bool debug,
+			const bool* point_mask);
 		
 		
 		

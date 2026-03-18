@@ -233,7 +233,8 @@ RasterizeGaussiansfilterCUDA(
 	const int image_width,
 	const torch::Tensor& depth_mesh,
 	const bool prefiltered,
-	const bool debug)
+	const bool debug,
+	const torch::Tensor& Point_mask)
 {
   if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
     AT_ERROR("means3D must have dimensions (num_points, 3)");
@@ -281,7 +282,8 @@ RasterizeGaussiansfilterCUDA(
 			tan_fovy,
 			prefiltered,
 			radii.contiguous().data<int>(),
-			debug
+			debug,
+			Point_mask.data<bool>()
 		);
   }
   return radii;

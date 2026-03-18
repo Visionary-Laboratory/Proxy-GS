@@ -83,4 +83,5 @@ RasterizeGaussiansfilterCUDA(
 	const int image_width,
 	const torch::Tensor& depth_mesh,
 	const bool prefiltered,
-	const bool debug);
+	const bool debug,
+	const torch::Tensor& Point_mask);

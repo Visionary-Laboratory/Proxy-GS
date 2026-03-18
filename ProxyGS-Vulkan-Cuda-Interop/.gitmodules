@@ -1,0 +1,4 @@
+[submodule "external/nv_cluster_lod_builder"]
+	path = external/nv_cluster_lod_builder
+	url = https://github.com/nvpro-samples/nv_cluster_lod_builder.git
+	branch = main

@@ -30,7 +30,7 @@ from Mesh2DepthHelper import DepthRenderer,Load_ply_resource,Build_Ply_Render_Ca
 from scene import Scene
 import json
 import time
-from gaussian_renderer import render, prefilter_voxel
+from gaussian_renderer_inference import render, prefilter_voxel
 import torchvision
 from tqdm import tqdm
 from utils.general_utils import safe_state
@@ -41,8 +41,8 @@ from gaussian_renderer import GaussianModel
 import OpenGL.GL as gl
 
 
-sys.path.insert(0, "python")
-sys.path.insert(0, "build-py/_bin/Release")
+sys.path.insert(0, "ProxyGS-Vulkan-Cuda-Interop/python")
+sys.path.insert(0, "ProxyGS-Vulkan-Cuda-Interop/build-py/_bin/Release")
 import sys
 from vk2torch_renderer import VK2TorchRenderer
 from vk2torch_utils import save_depth_png
@@ -53,7 +53,7 @@ width, height = 1024, 690
 # scene_file = "./_downloaded_resources/house_new.glb"  # Relative to asset root
 asset_root = os.getcwd()  # to the directory
 output_dir = "basic_render_output"
-scene_file = "/home/yyg/Desktop/vk_lod_clusters/small_city_reduced.glb"  # Relative to asset root
+DEFAULT_SCENE_FILE = "/home/yyg/Desktop/vk_lod_clusters/small_city_reduced.glb"  # Relative to asset root
 
 # scene_file = "/home/yyg/Downloads/code/Mesh_occGS/Block_E_Reduced_mesh.glb"
 # scene_file = "/home/yyg/Downloads/code/Mesh_occGS/city_street_new.glb"
@@ -63,7 +63,7 @@ scene_file = "/home/yyg/Desktop/vk_lod_clusters/small_city_reduced.glb"  # Relat
 asset_root = "/home/yyg/Desktop/vk_lod_clusters/"  # to the directory
 
 @torch.inference_mode()
-def render_set(model_path, name, iteration, views, gaussians, pipeline, background, show_level, ape_code):
+def render_set(model_path, name, iteration, views, gaussians, pipeline, background, show_level, ape_code, scene_file):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
     makedirs(render_path, exist_ok=True)
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
@@ -149,7 +149,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         with open(os.path.join(model_path, name, "ours_{}".format(iteration), "per_view_count_level.json"), 'w') as fp:
             json.dump(per_view_level_dict, fp, indent=True)     
      
-def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, show_level : bool, ape_code : int, ply_path=None):
+def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, show_level : bool, ape_code : int, ply_path=None, scene_file=DEFAULT_SCENE_FILE):
     with torch.no_grad():
         gaussians = GaussianModel(
             dataset.feat_dim, dataset.n_offsets, dataset.fork, dataset.use_feat_bank, dataset.appearance_dim, 
@@ -170,10 +170,10 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
             os.makedirs(dataset.model_path)
         
         if not skip_train:
-            render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, show_level, ape_code)
+            render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, show_level, ape_code, scene_file)
 
         if not skip_test:
-            render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, show_level, ape_code)
+            render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, show_level, ape_code, scene_file)
 
 if __name__ == "__main__":
 
@@ -197,11 +197,12 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--show_level", action="store_true")
     parser.add_argument("--ply_path", type=str, default=None)
+    parser.add_argument("--scene_file", type=str, default=DEFAULT_SCENE_FILE)
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
 
     # Initialize system state (RNG)
     safe_state(args.quiet)
 
-    render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test, args.show_level, args.ape, args.ply_path)
+    render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test, args.show_level, args.ape, args.ply_path, args.scene_file)
     

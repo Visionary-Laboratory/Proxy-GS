@@ -34,7 +34,6 @@ ouputs*
 output*
 mesh_output
 *.ply
-submodules/diff-gaussian-rasterization/cuda_rasterizer/auxiliary.h
 submodules/diff-gaussian-rasterization/diff_gaussian_rasterization.egg-info/PKG-INFO
 submodules/simple-knn/simple_knn.egg-info/PKG-INFO
 campus.sh
@@ -51,8 +50,12 @@ submodules/diff-gaussian-rasterization/diff_gaussian_rasterization.egg-info/PKG-
 submodules/diff-gaussian-rasterization/diff_gaussian_rasterization.egg-info/PKG-INFO
 compare_psnr.py
 render_campus.py
-render_real.py
 render_real_small_city.py
 Untitled
-render_real.py
 =10.1
+run_cvpr*.sh
+soft_chart.py
+comapre.py
+convert.py
+curve.py
+run_*.sh

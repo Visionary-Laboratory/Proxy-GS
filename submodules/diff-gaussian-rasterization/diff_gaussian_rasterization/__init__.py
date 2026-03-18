@@ -171,10 +171,17 @@ class GaussianRasterizationSettings(NamedTuple):
     prefiltered : bool
     debug : bool
     depth_mesh : torch.Tensor = None
+
+
+_depth_buf = None
+
 class GaussianRasterizer(nn.Module):
     def __init__(self, raster_settings):
         super().__init__()
         self.raster_settings = raster_settings
+        global _depth_buf
+        if _depth_buf == None:
+            _depth_buf = torch.empty(raster_settings.image_height, raster_settings.image_width, device='cuda', dtype=torch.float32)
 
     def markVisible(self, positions):
         # Mark visible points (based on frustum culling for camera) with a boolean 
@@ -222,7 +229,7 @@ class GaussianRasterizer(nn.Module):
             raster_settings, 
         )
 
-    def visible_filter(self, means3D, scales = None, rotations = None, cov3D_precomp = None):
+    def visible_filter(self, means3D, scales = None, rotations = None, cov3D_precomp = None, point_mask = None):
         
         raster_settings = self.raster_settings
 
@@ -232,7 +239,11 @@ class GaussianRasterizer(nn.Module):
             rotations = torch.Tensor([])
         if cov3D_precomp is None:
             cov3D_precomp = torch.Tensor([])
-
+        if point_mask is None:
+            point_mask = torch.Tensor([])   
+        depth = self._ensure_depth(raster_settings.depth_mesh, raster_settings.image_height, raster_settings.image_width, 'cuda')
+        global _depth_buf
+        _depth_buf.copy_(depth)
         # Invoke C++/CUDA rasterization routine
         with torch.no_grad():
             radii = _C.rasterize_aussians_filter(means3D,
@@ -246,10 +257,35 @@ class GaussianRasterizer(nn.Module):
             raster_settings.tanfovy,
             raster_settings.image_height,
             raster_settings.image_width,
-            raster_settings.depth_mesh,
+            _depth_buf,
             raster_settings.prefiltered,
-            raster_settings.debug)
+            raster_settings.debug,
+            point_mask)
         return  radii
+
+
+
+    @staticmethod
+    def _ensure_depth(depth: torch.Tensor, H: int, W: int, device: torch.device) -> torch.Tensor:
+        # if depth is None:
+        #     raise ValueError("depth_mesh is required when using depth culling/texture.")
+
+        # # 允许 [1,H,W] / [H,W]；拉成 [H,W]
+        # if depth.dim() == 3 and depth.shape[0] == 1:
+        #     depth = depth.squeeze(0)
+        # if depth.dim() != 2:
+        #     raise ValueError(f"depth_mesh must be [H, W] or [1,H,W], got {tuple(depth.shape)}")
+
+        # # 尺寸检查
+        # if depth.shape[-2:] != (H, W):
+        #     raise ValueError(f"depth_mesh shape {tuple(depth.shape)} != (H,W)=({H},{W})")
+
+        # # dtype/device/contiguous
+        # if depth.dtype != torch.float32:
+        #     depth = depth.float()
+        # if depth.device != device:
+        #     depth = depth.to(device, non_blocking=True)
+        return depth.contiguous()
     
     
 

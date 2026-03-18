@@ -1,0 +1,111 @@
+#############################
+# generic
+#############################
+
+*.bak
+
+#############################
+# spirv/sass
+#############################
+
+*.spv
+*.spva
+*.sass
+*.sassbin
+
+#############################
+#specific to the project
+#############################
+
+# Build directories
+cmake_built
+cmake_build
+build/
+build-*/
+build_*/
+_bin/
+_install/
+bin_x64
+
+# Downloaded resources and cache files
+downloaded_resources/
+_downloaded_resources/
+*.nvsngeo
+*.cache
+
+*.ply
+*.glb
+
+*.gltf
+
+# Log files
+*.log
+output.log
+test_progress.log
+debug_*.log
+vulkan*.log
+python*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# IDE and system files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.npy
+
+_deps/
+
+# Generated files
+zbsgfxpack.lua
+
+# Python compiled modules and extensions
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.egg-info/
+dist/
+.eggs/
+
+# Python extension modules
+vk2torch_ext.cpython-*.so
+*.cpython-*.so
+
+# Test output files
+*.png
+success_test*.png
+test_*.png
+frame_*.png
+
+# Shell scripts output
+test_vk2torch.sh
+test_*.sh
+
+# CMake generated files  
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
+Makefile
+*.make
+
+# Scene files (optional - uncomment if you don't want to track them)
+*.glb
+*.gltf
+
+# Open-source cleanup (explicit large/generated paths)
+assets/glb/
+build-py/
+build-py-min/
+basic_render_output/
+out_depth/
+
+# Keep source/control .txt files trackable, only ignore runtime text dumps
+vulkan_*.txt

@@ -30,7 +30,7 @@ This repo contains official implementations of Proxy-GS, ⭐ us if you like it!
   
 ## Todo List
 - 🔥🔥 News: ```2026/2/26```: Proxy-GS has been accepted to CVPR 2026.
-- [ ] Release the training & inference code of Proxy-GS.
+- [✓] Release the training & inference code of Proxy-GS.
 - [ ] Release all model checkpoints. 
 
 ## Installation
@@ -56,7 +56,7 @@ pip install ./submodules/diff-gaussian-rasterization
 pip install ./submodules/simple-knn
 ```
 
-## Open-Source Workflow
+## Training and Inference 
 
 The following example uses the MatrixCity `block_E` scene. For reproducibility, we recommend using a dedicated output directory such as `output/block_E`.
 
@@ -102,24 +102,49 @@ Checkpoints will be saved under `${OUTPUT}/point_cloud`.
 
 ### 3. Test and evaluate
 
-The recommended evaluation path is to enable test-time evaluation in `train.py` by adding `--eval`. After training finishes, the script will automatically render the test split and compute PSNR, SSIM, and LPIPS.
+
+
+#### 4.  build `ProxyGS-Vulkan-Cuda-Interop` ()
+
+**This optional Vulkan backend currently requires Ubuntu Linux and an NVIDIA RTX-series compute GPU.**
+
+If you want to use the Vulkan-CUDA interop backend used by `render_real.py`, build the Python extension in `ProxyGS-Vulkan-Cuda-Interop` first.
 
 ```bash
-python train.py \
-  --eval \
-  -s ${SCENE} \
-  -m ${OUTPUT} \
-  -i ${IMAGES} \
-  --ply_mesh ${MESH} \
-  --depth_npy_dir ${DEPTH_DIR} \
-  --ply_path ${POINTS}
+cd ProxyGS-Vulkan-Cuda-Interop
+
+# Use the current conda environment
+export PYTHON_EXECUTABLE=$(which python)
+
+# Set this to your local Vulkan SDK path
+export VULKAN_SDK_PREFIX=$HOME/VulkanSDK/1.4.321.1/x86_64
+
+# Build the Python extension only
+./build_pyext_only.sh build-py
 ```
 
-Evaluation outputs will be written to:
+After building, verify that the extension can be imported successfully:
 
-- Rendered test images: `${OUTPUT}/test`
-- Summary metrics: `${OUTPUT}/results.json`
-- Per-view metrics: `${OUTPUT}/per_view.json`
+```bash
+cd ProxyGS-Vulkan-Cuda-Interop
+python -c "
+import sys
+sys.path.insert(0, 'build-py/_bin/Release')
+import vk2torch_ext
+print('vk2torch_ext OK:', vk2torch_ext.__version__)
+"
+```
+
+### FPS Evaluation
+
+Once the extension is built, go back to the project root and run `render_real.py`.
+
+```bash
+cd ..
+python render_real.py \
+  -m ${OUTPUT} \
+  --scene_file /absolute/path/to/your_scene.glb
+```
 
 If you want to keep the exact commands used in our current internal runs, simply replace `${OUTPUT}` with `output`.
 
@@ -130,6 +155,9 @@ This project builds upon several excellent open-source repositories. We sincerel
 - [Octree-GS](https://github.com/city-super/Octree-GS): *Octree-GS: Towards Consistent Real-time Rendering with LOD-Structured 3D Gaussians*
 - [Scaffold-GS](https://github.com/city-super/Scaffold-GS): *Scaffold-GS: Structured 3D Gaussians for View-Adaptive Rendering*
 - [3D Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting): *3D Gaussian Splatting for Real-Time Radiance Field Rendering*
+- [vk_lod_clusters](https://github.com/nvpro-samples/vk_lod_clusters/tree/main): *Sample for cluster-based continuous level of detail rasterization or ray tracing*
+
+
 
 
 
