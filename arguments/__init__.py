@@ -99,16 +99,16 @@ class PipelineParams(ParamGroup):
 
 class OptimizationParams(ParamGroup):
     def __init__(self, parser):
-        self.iterations = 40_000
+        self.iterations = 100_000
         self.position_lr_init = 0.0
         self.position_lr_final = 0.0
         self.position_lr_delay_mult = 0.01
-        self.position_lr_max_steps = self.iterations
+        self.position_lr_max_steps = self.iterations//2
         
         self.offset_lr_init = 0.01
-        self.offset_lr_final = 0.0001
+        self.offset_lr_final = 0.0001 
         self.offset_lr_delay_mult = 0.01
-        self.offset_lr_max_steps = self.iterations
+        self.offset_lr_max_steps = self.iterations//2
 
         self.feature_lr = 0.0075
         self.opacity_lr = 0.02
@@ -118,43 +118,43 @@ class OptimizationParams(ParamGroup):
         self.mlp_opacity_lr_init = 0.002
         self.mlp_opacity_lr_final = 0.00002  
         self.mlp_opacity_lr_delay_mult = 0.01
-        self.mlp_opacity_lr_max_steps = self.iterations
+        self.mlp_opacity_lr_max_steps = self.iterations//2
 
         self.mlp_cov_lr_init = 0.004
         self.mlp_cov_lr_final = 0.004
         self.mlp_cov_lr_delay_mult = 0.01
-        self.mlp_cov_lr_max_steps = self.iterations
+        self.mlp_cov_lr_max_steps = self.iterations//2
         
         self.mlp_color_lr_init = 0.008
         self.mlp_color_lr_final = 0.00005
         self.mlp_color_lr_delay_mult = 0.01
-        self.mlp_color_lr_max_steps = self.iterations
+        self.mlp_color_lr_max_steps = self.iterations//2
 
         self.mlp_color_lr_init = 0.008
         self.mlp_color_lr_final = 0.00005
         self.mlp_color_lr_delay_mult = 0.01
-        self.mlp_color_lr_max_steps = self.iterations
+        self.mlp_color_lr_max_steps = self.iterations//2
         
         self.mlp_featurebank_lr_init = 0.01
         self.mlp_featurebank_lr_final = 0.00001
         self.mlp_featurebank_lr_delay_mult = 0.01
-        self.mlp_featurebank_lr_max_steps = self.iterations
+        self.mlp_featurebank_lr_max_steps = self.iterations//2
 
         self.appearance_lr_init = 0.05
         self.appearance_lr_final = 0.0005
         self.appearance_lr_delay_mult = 0.01
-        self.appearance_lr_max_steps = self.iterations
+        self.appearance_lr_max_steps = self.iterations//2
 
         self.percent_dense = 0.01
         self.lambda_dssim = 0.2
         
         # for anchor densification
         self.start_stat = 500
-        self.update_from = 8500
+        self.update_from = 1500
         self.coarse_iter = 10000
         self.coarse_factor = 1.5
         self.update_interval = 100
-        self.update_until = 25000
+        self.update_until = 40000
         self.update_anchor = True
 
         self.min_opacity = 0.005

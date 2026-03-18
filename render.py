@@ -96,17 +96,40 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
     depths_tsdf_fusion = []
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        # path = view.image_path.replace("train/small_city_road_horizon/", "depth/small_city_road_horizon_depth/")
-        path= re.sub(
-        r"train/(block_\d+)",
-        r"depth/aerial/train/\1_depth",
-        view.image_path)
-        # path
-        path = path.replace("png", "exr")
-        depth = read_exr_to_tensor(path)
+        # 路径替换：MatrixCity/small_city/street/train/small_city_road_horizon/0000.png
+        # -> MatrixCity/small_city_depth/street/train/small_city_road_horizon_depth/0000.exr
+        path = view.image_path
+        
+        # 先规范化路径，移除相对路径部分（如 ../../）
+        # 如果路径是绝对路径，使用 abspath 确保正确处理
+        if os.path.isabs(path):
+            path = os.path.abspath(os.path.normpath(path))
+        else:
+            path = os.path.normpath(path)
+        
+        # 将 small_city/ 替换为 small_city_depth/
+        path = path.replace("small_city/", "small_city_depth/")
+        # 将 small_city_road_horizon 替换为 small_city_road_horizon_depth
+        path = path.replace("small_city_road_horizon", "small_city_road_horizon_depth")
+        # 将 .png 替换为 .exr
+        path = path.replace(".png", ".exr")
+        
+        # 再次规范化路径，确保替换后没有多余的路径分隔符（如 ../../）
+        # 使用 abspath 确保绝对路径被正确处理
+        if os.path.isabs(path):
+            path = os.path.abspath(os.path.normpath(path))
+        else:
+            path = os.path.normpath(path)
+        # 检查文件是否存在
+        if not os.path.exists(path):
+            print(f"Warning: EXR depth file not found: {path}, using zero depth map")
+            # 创建默认的零深度图（使用视图的分辨率）
+            H, W = view.image_height, view.image_width
+            depth = torch.zeros((H, W), dtype=torch.float32)
+        else:
+            depth = read_exr_to_tensor(path)
         depth_tsdf = depth.clone()
         # img = o3d.io.read_image(path)      # 会得到浮点图（取决于文件）
-
 
         if use_depth_filter:
             view_dir = torch.nn.functional.normalize(view.get_rays(), p=2, dim=-1)
@@ -238,7 +261,7 @@ if __name__ == "__main__":
     parser.add_argument("--skip_test", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--show_level", action="store_true")
-    parser.add_argument("--max_depth", default=5.0, type=float)
+    parser.add_argument("--max_depth", default=1.0, type=float)
     parser.add_argument("--voxel_size", default=0.004, type=float)
     parser.add_argument("--num_cluster", default=1, type=int)
     parser.add_argument("--use_depth_filter", action="store_true")

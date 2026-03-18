@@ -2,57 +2,92 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Train",
-            "type": "python",
+            "name": "Python: Train (Debug)",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
             "args": [
-                "--eval",
-                "-s","data/hirarchy/small_city/camera_calibration/rectified",
-                "-m", "ouputs//hirarchy_small_city_test",
-                "--ply_path", "data/berlin/sparse/0/points3D.ply",
-                "--ply_mesh","data/hirarchy/small_city/camera_calibration/rectified/tsdf_fusion_post_smallcity.ply",
-                "--resolution", "4",
-                // "--use_wandb"
+                "-s", "proxy-gs/small_city/camera_calibration/aligned",
+                "-i", "proxy-gs/small_city/camera_calibration/rectified/images",
+                "-m", "output_demo/small_city",
+                "--ply_mesh", "proxy-gs/small_city/camera_calibration/small_city_fixed.ply",
             ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         },
         {
-            "name": "render",
-            "type": "python",
+            "name": "Python: Train (Normal)",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/render.py",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
             "args": [
-                "-m", "ouputs/Block-E",
-                // "--use_wandb"
-                "--skip_test",
-                "--ply_path", "data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply",
+                "-s", "proxy-gs/campus/camera_calibration/chunks/1_1",
+                "-i", "proxy-gs/campus/camera_calibration/rectified/images",
+                "-m", "output/campus_1_1_ours_add_1",
+                "--ply_mesh", "proxy-gs/campus/agg_1.ply",
+                "--ratio", "2"
             ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         },
         {
-            "name": "render_real",
-            "type": "python",
+            "name": "Python: Render Real",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/render_real.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
             "args": [
-                "-m", "ouputs/Block-E-Horizon-ours-wo-proxygrid",
-                // "--use_wandb"
-                "-s", "data/small_city/street/pose/block_E",
-                "--skip_train",
-                "--ply_path", "data/hirarchy/small_city/camera_calibration/rectified/sparse/0/points3D.ply",
-                "--ply_mesh", "ouputs/Block-E/mesh_old/tsdf_fusion_post.ply",
+                "-m", "output_demo/small_city",
+                "--iteration", "-1",
+                "--render_video"
             ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         },
         {
-            "name": "metrics",
-            "type": "python",
+            "name": "Python: Mesh Render Block E",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/metrics.py",
+            "program": "${workspaceFolder}/mesh_render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
             "args": [
-                "-m", "outputs/alameda-3stats-new",
-                // "--use_wandb"
-                // "--skip_train"
+                "-s", "proxy-gs/MatrixCity/small_city/street/pose/block_E",
+                "-m", "output",
+                "-i", "proxy-gs/MatrixCity/small_city/street/train/small_city_road_horizon",
+                "--ply_mesh", "cvpr/block_E_from_mesh.ply",
+                "--depth_npy_dir", "mesh_depth_block_E"
             ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Python: Train Block E",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "-s", "proxy-gs/MatrixCity/small_city/street/pose/block_E",
+                "-m", "output",
+                "-i", "proxy-gs/MatrixCity/small_city/street/train/small_city_road_horizon",
+                "--ply_mesh", "cvpr/block_E_from_mesh.ply",
+                "--depth_npy_dir", "mesh_depth_block_E",
+                "--ply_path", "proxy-gs/MatrixCity/small_city/street/pose/block_E/points3d.ply"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }
-

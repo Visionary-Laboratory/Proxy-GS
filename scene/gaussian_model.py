@@ -325,7 +325,7 @@ class GaussianModel:
         box_max = torch.max(points)*self.extend
         box_d = box_max - box_min
         if self.base_layer < 0:
-            default_voxel_size = 0.04
+            default_voxel_size = 0.01
             self.base_layer = torch.round(torch.log2(box_d/default_voxel_size)).int().item()-(self.levels//2)+1
         self.voxel_size = box_d/(float(self.fork) ** self.base_layer)
         self.init_pos = torch.tensor([box_min, box_min, box_min]).float().cuda()
@@ -701,7 +701,7 @@ class GaussianModel:
                 if group['name'] == "scaling":
                     scales = group["params"][0]
                     temp = scales[:,3:]
-                    temp[temp>0.05] = 0.05
+                    temp[temp>0.005] = 0.005
                     group["params"][0][:,3:] = temp
                 optimizable_tensors[group["name"]] = group["params"][0]
             else:
@@ -709,7 +709,7 @@ class GaussianModel:
                 if group['name'] == "scaling":
                     scales = group["params"][0]
                     temp = scales[:,3:]
-                    temp[temp>0.05] = 0.05
+                    temp[temp>0.005] = 0.005
                     group["params"][0][:,3:] = temp
                 optimizable_tensors[group["name"]] = group["params"][0]
             

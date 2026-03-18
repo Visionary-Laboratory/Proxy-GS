@@ -242,7 +242,7 @@ def readCamerasFromTransforms(path, transformsfile, random_background, white_bac
 
         for idx, frame in enumerate(frames):
 
-            # if idx > 200 :
+            # if idx > 10 :
             #     continue
             cam_name = os.path.join(path, frame["file_path"] + extension)
             if not os.path.exists(cam_name):
@@ -339,8 +339,10 @@ def readColmapSceneInfo(path, images, eval, ds, llffhold=50):
                 test_cam_names_list = [line.strip() for line in file]
     else:
         test_cam_names_list = []
-    
-    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir), test_cam_names_list=test_cam_names_list)
+    if images == "images":
+        cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir), test_cam_names_list=test_cam_names_list)
+    else:
+        cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=images, test_cam_names_list=test_cam_names_list)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
     train_cam_infos = [c for c in cam_infos if not c.is_test]

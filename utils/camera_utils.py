@@ -15,6 +15,7 @@ from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
 import os
 from PIL import Image
+from tqdm import tqdm
 WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale):
@@ -44,12 +45,12 @@ def loadCam(args, id, cam_info, resolution_scale):
     gt_image = resized_image_rgb[:3, ...]
     loaded_mask = None
 
-    alpha_mask = cam_info.image_path.replace('images','masks')
-    alpha_mask_path = alpha_mask.replace('jpg','png')
+    # alpha_mask = cam_info.image_path.replace('images','masks')
+    # alpha_mask_path = alpha_mask.replace('jpg','png')
 
-    if os.path.exists(alpha_mask_path):
-        alpha_mask = Image.open(alpha_mask_path)
-        loaded_mask = PILtoTorch(alpha_mask, resolution)
+    # if os.path.exists(alpha_mask_path):
+    #     alpha_mask = Image.open(alpha_mask_path)
+    #     loaded_mask = PILtoTorch(alpha_mask, resolution)
 
 
     # print(f'gt_image: {gt_image.shape}')
@@ -65,7 +66,7 @@ def loadCam(args, id, cam_info, resolution_scale):
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
 
-    for id, c in enumerate(cam_infos):
+    for id, c in enumerate(tqdm(cam_infos, desc="Loading cameras")):
         camera_list.append(loadCam(args, id, c, resolution_scale))
 
     return camera_list

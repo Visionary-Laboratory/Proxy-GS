@@ -14,8 +14,8 @@ from einops import repeat
 import math
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
 from scene.gaussian_model import GaussianModel
-from diff_gaussian_rasterization_cull_filter import GaussianRasterizationSettings as GaussianRasterizationSettings_fillter
-from diff_gaussian_rasterization_cull_filter import GaussianRasterizer as GaussianRasterizer_filter
+# from diff_gaussian_rasterization_cull_filter import GaussianRasterizationSettings as GaussianRasterizationSettings_fillter
+# from diff_gaussian_rasterization_cull_filter import GaussianRasterizer as GaussianRasterizer_filter
 from Mesh2DepthHelper import DepthRenderer,Load_ply_resource,Build_Ply_Render_Camera_Parameters_colmap,Build_Ply_Render_Camera_Parameters_default,show_depth_preview, Build_Ply_Render_Camera_Parameters_colmap_correct
 import cv2
 import time
@@ -394,33 +394,51 @@ def prefilter_voxel_cull(viewpoint_camera, pc : GaussianModel, pipe, bg_color : 
     return visible_mask
 
 
-
-def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None, tol = None):
-    """
-    Render the scene. 
-    
-    Background tensor (bg_color) must be on GPU!
-    """
+def mesh_depth_render(viewpoint_camera, renderer = None, mesh=None):
     device = "cuda"
     # Set up rasterization configuration
-    tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
-    tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
-    renderer = DepthRenderer(device=device)
+    if renderer is None:
+        renderer = DepthRenderer(device=device)
     # start = time.time()
 
     camera_parameters = Build_Ply_Render_Camera_Parameters_colmap_correct(viewpoint_camera.Fx, viewpoint_camera.Fy, viewpoint_camera.Cx, viewpoint_camera.Cy, viewpoint_camera.image_width, viewpoint_camera.image_height, 0.01, 100.0, \
     viewpoint_camera.R.transpose(-1,-2), viewpoint_camera.T, 'cuda')
 
 
-
-    mesh = pc.mesh
-
-
-
+    # mesh = pc.mesh
 
     depth_m, mask_inf = renderer.render_depth_batched(
         mesh = mesh,camera_parameters=camera_parameters,  max_tris_per_pass=1_000_000_00, flip_y=True,linear_depth=True
     )
+
+    return depth_m
+
+
+def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None, tol = None, renderer = None, depth_map = None):
+    """
+    Render the scene. 
+    
+    Background tensor (bg_color) must be on GPU!
+    """
+    # Set up rasterization configuration
+    tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
+    tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
+    depth_device = bg_color.device
+    if depth_map is None:
+        depth_m = torch.full(
+            (int(viewpoint_camera.image_height), int(viewpoint_camera.image_width)),
+            1e8,
+            dtype=torch.float32,
+            device=depth_device,
+        )
+    else:
+        depth_m = torch.as_tensor(depth_map, dtype=torch.float32, device=depth_device).squeeze()
+
+    if depth_m.shape != (int(viewpoint_camera.image_height), int(viewpoint_camera.image_width)):
+        raise ValueError(
+            f"Depth map shape mismatch for {viewpoint_camera.image_name}: "
+            f"got {tuple(depth_m.shape)}, expected {(int(viewpoint_camera.image_height), int(viewpoint_camera.image_width))}"
+        )
 
     if tol is not None:
         depth_m = depth_m + tol
@@ -468,7 +486,6 @@ def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch
     
     visible_mask = pc._anchor_mask.clone()
     visible_mask[pc._anchor_mask] = radii_pure > 0
-
     # end = time.time()
     # print("Prefiltering time: ", end - start)
 

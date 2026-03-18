@@ -1,4 +1,5 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: diff_gaussian_rasterization
 Version: 0.0.0
 License-File: LICENSE.md
+Dynamic: license-file

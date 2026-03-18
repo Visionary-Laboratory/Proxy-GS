@@ -212,7 +212,7 @@ __forceinline__ __device__ bool in_frustum_depth(int idx,
     }
 
     // 读取深度；深度必须与 p_view.z 同“方向/单位”
-    float d = depth[v * W + u] * 1.2 ;
+    float d = depth[v * W + u] + 0.3 ;
     // if (!isfinite(d) || d <= 0.f) {
     //     // 无效深度：放行
     //     return true;

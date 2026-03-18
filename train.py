@@ -121,7 +121,35 @@ def depth_mask(gs_depth, depth_m, iteration, total_iters,
     return mask
 
 
-def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, wandb=None, logger=None, ply_path=None, mesh_path=None):
+def resolve_depth_npy_dir(depth_npy_dir, model_path):
+    if depth_npy_dir is None:
+        depth_npy_dir = os.path.join(model_path, "mesh_depth_npy")
+    return os.path.abspath(depth_npy_dir)
+
+
+def load_depth_cache(cameras, depth_npy_dir):
+    depth_cache = {}
+    for camera in cameras:
+        if camera.image_name in depth_cache:
+            continue
+
+        depth_path = os.path.join(depth_npy_dir, f"{camera.image_name}.npy")
+        if not os.path.exists(depth_path):
+            raise FileNotFoundError(f"Depth file not found for {camera.image_name}: {depth_path}")
+
+        depth_cache[camera.image_name] = torch.from_numpy(np.load(depth_path)).float().squeeze()
+
+    return depth_cache
+
+
+def get_depth_for_camera(viewpoint_camera, depth_cache, device="cuda"):
+    depth_m = depth_cache[viewpoint_camera.image_name]
+    if depth_m.device.type == device:
+        return depth_m
+    return depth_m.to(device=device, non_blocking=True)
+
+
+def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, wandb=None, logger=None, ply_path=None, mesh_path=None, depth_npy_dir=None):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(
@@ -139,6 +167,10 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
+    depth_npy_dir = resolve_depth_npy_dir(depth_npy_dir, dataset.model_path)
+    all_cameras = scene.getTrainCameras() 
+    depth_cache = load_depth_cache(all_cameras, depth_npy_dir)
+
     viewpoint_stack = None
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
@@ -146,6 +178,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
     # 7x7 平均卷积核
     kernel = torch.ones((1,1,7,7), device='cuda') / (7*7)
     epoch = 0
+    
     for iteration in range(first_iter, opt.iterations + 1):        
         # network gui not available in octree-gs yet
         if network_gui.conn == None:
@@ -198,7 +231,8 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
 
 
 
-        voxel_visible_mask,  depth_m = prefilter_voxel(viewpoint_cam, gaussians, pipe, background)
+        depth_m = get_depth_for_camera(viewpoint_cam, depth_cache)
+        voxel_visible_mask, depth_m = prefilter_voxel(viewpoint_cam, gaussians, pipe, background, depth_map=depth_m)
 
 
         ##add_dropout
@@ -263,8 +297,8 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
         ssim_loss = (1.0 - ssim(image, gt_image))
         if scaling.shape[0] > 0:
             scaling_reg = scaling.prod(dim=1).mean()
-        else:
-            scaling_reg = torch.tensor(0.0, device="cuda")
+        # else:
+        # scaling_reg = torch.tensor(0.0, device="cuda")
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * ssim_loss + 0.01*scaling_reg
 
         loss.backward()
@@ -284,7 +318,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
                 progress_bar.close()
 
             # Log and save
-            training_report(tb_writer, dataset_name, iteration, anchor_number_use, anchor_number_sum, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background), wandb, logger)
+            training_report(tb_writer, dataset_name, iteration, anchor_number_use, anchor_number_sum, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background), wandb, logger, depth_cache)
             if (iteration in saving_iterations):
                 logger.info("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
@@ -311,7 +345,8 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
                 new_anchors_world = []
                 for viewpoint_cam in scene.getTrainCameras():
                     gaussians.set_anchor_mask(viewpoint_cam.camera_center, iteration, viewpoint_cam.resolution_scale)
-                    voxel_visible_mask,  depth_m = prefilter_voxel(viewpoint_cam, gaussians, pipe, background)
+                    depth_m = get_depth_for_camera(viewpoint_cam, depth_cache)
+                    voxel_visible_mask, depth_m = prefilter_voxel(viewpoint_cam, gaussians, pipe, background, depth_map=depth_m)
                     retain_grad = (iteration < opt.update_until and iteration >= 0)
                     render_pkg = render(viewpoint_cam, gaussians, pipe, background, visible_mask=voxel_visible_mask, retain_grad=retain_grad)
                     image = render_pkg["render"]
@@ -406,7 +441,7 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-def training_report(tb_writer, dataset_name, iteration, anchor_number_use , anchor_number_sum, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, wandb=None, logger=None):
+def training_report(tb_writer, dataset_name, iteration, anchor_number_use , anchor_number_sum, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, wandb=None, logger=None, depth_cache=None):
     if tb_writer:
         tb_writer.add_scalar(f'{dataset_name}/train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar(f'{dataset_name}/train_loss_patches/total_loss', loss.item(), iteration)
@@ -431,6 +466,15 @@ def training_report(tb_writer, dataset_name, iteration, anchor_number_use , anch
                 l1_test = 0.0
                 psnr_test = 0.0
                 
+                # 创建保存图片的目录
+                model_path = scene.model_path
+                render_path = os.path.join(model_path, config['name'], "ours_{}".format(iteration), "renders")
+                error_path = os.path.join(model_path, config['name'], "ours_{}".format(iteration), "errors")
+                gts_path = os.path.join(model_path, config['name'], "ours_{}".format(iteration), "gt")
+                makedirs(render_path, exist_ok=True)
+                makedirs(error_path, exist_ok=True)
+                makedirs(gts_path, exist_ok=True)
+                
                 if wandb is not None:
                     gt_image_list = []
                     render_image_list = []
@@ -439,9 +483,35 @@ def training_report(tb_writer, dataset_name, iteration, anchor_number_use , anch
 
                 for idx, viewpoint in enumerate(config['cameras']):
                     scene.gaussians.set_anchor_mask(viewpoint.camera_center, iteration, viewpoint.resolution_scale)
-                    voxel_visible_mask, depth_m = prefilter_voxel(viewpoint, scene.gaussians, *renderArgs)
+                    depth_m = get_depth_for_camera(viewpoint, depth_cache)
+                    voxel_visible_mask, depth_m = prefilter_voxel(viewpoint, scene.gaussians, *renderArgs, depth_map=depth_m)
                     image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs, visible_mask=voxel_visible_mask)["render"], 0.0, 1.0)
                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
+                    
+                    # 保存图片
+                    if hasattr(viewpoint, 'image_name') and viewpoint.image_name:
+                        # 使用 image_name 作为文件名（去除扩展名）
+                        image_name = os.path.splitext(viewpoint.image_name)[0]
+                        render_filename = os.path.join(render_path, image_name + ".png")
+                        error_filename = os.path.join(error_path, image_name + ".png")
+                        gt_filename = os.path.join(gts_path, image_name + ".png")
+                    else:
+                        # 使用索引作为文件名
+                        render_filename = os.path.join(render_path, '{0:05d}'.format(idx) + ".png")
+                        error_filename = os.path.join(error_path, '{0:05d}'.format(idx) + ".png")
+                        gt_filename = os.path.join(gts_path, '{0:05d}'.format(idx) + ".png")
+                    
+                    # 确保 gt_image 格式正确（3通道）
+                    if gt_image.dim() == 3:
+                        gt_image_save = gt_image
+                    else:
+                        gt_image_save = gt_image[0:3, :, :] if gt_image.shape[0] > 3 else gt_image
+                    
+                    # 保存渲染图片、错误图和GT图片
+                    torchvision.utils.save_image(image, render_filename)
+                    torchvision.utils.save_image((gt_image_save - image).abs(), error_filename)
+                    torchvision.utils.save_image(gt_image_save, gt_filename)
+                    
                     if tb_writer and (idx < 30):
                         tb_writer.add_images(f'{dataset_name}/'+config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
                         tb_writer.add_images(f'{dataset_name}/'+config['name'] + "_view_{}/errormap".format(viewpoint.image_name), (gt_image[None]-image[None]).abs(), global_step=iteration)
@@ -478,7 +548,7 @@ def training_report(tb_writer, dataset_name, iteration, anchor_number_use , anch
 
         scene.gaussians.train()
 
-def render_set(model_path, name, iteration, views, gaussians, pipeline, background):
+def render_set(model_path, name, iteration, views, gaussians, pipeline, background, depth_cache=None):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
     error_path = os.path.join(model_path, name, "ours_{}".format(iteration), "errors")
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
@@ -494,7 +564,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         torch.cuda.synchronize();t_start = time.time()
         
         gaussians.set_anchor_mask(view.camera_center, iteration, view.resolution_scale)
-        voxel_visible_mask = prefilter_voxel(view, gaussians, pipeline, background)
+        depth_m = get_depth_for_camera(view, depth_cache)
+        voxel_visible_mask, depth_m = prefilter_voxel(view, gaussians, pipeline, background, depth_map=depth_m)
         render_pkg = render(view, gaussians, pipeline, background, visible_mask=voxel_visible_mask)
         torch.cuda.synchronize();t_end = time.time()
 
@@ -523,7 +594,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     
     return t_list, visible_count_list
 
-def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train=False, skip_test=False, wandb=None, tb_writer=None, dataset_name=None, logger=None):
+def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train=False, skip_test=False, wandb=None, tb_writer=None, dataset_name=None, logger=None, depth_npy_dir=None):
     with torch.no_grad():
         gaussians = GaussianModel(
             dataset.feat_dim, dataset.n_offsets, dataset.fork, dataset.use_feat_bank, dataset.appearance_dim, 
@@ -543,15 +614,19 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         if not os.path.exists(dataset.model_path):
             os.makedirs(dataset.model_path)
 
+        depth_npy_dir = resolve_depth_npy_dir(depth_npy_dir, dataset.model_path)
+        all_cameras = scene.getTrainCameras() + scene.getTestCameras()
+        depth_cache = load_depth_cache(all_cameras, depth_npy_dir)
+
         if not skip_train:
-            t_train_list, visible_count  = render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background)
+            t_train_list, visible_count  = render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, depth_cache)
             train_fps = 1.0 / torch.tensor(t_train_list[5:]).mean()
             logger.info(f'Train FPS: \033[1;35m{train_fps.item():.5f}\033[0m')
             if wandb is not None:
                 wandb.log({"train_fps":train_fps.item(), })
 
         if not skip_test:
-            t_test_list, visible_count = render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
+            t_test_list, visible_count = render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, depth_cache)
             test_fps = 1.0 / torch.tensor(t_test_list[5:]).mean()
             logger.info(f'Test FPS: \033[1;35m{test_fps.item():.5f}\033[0m')
             if tb_writer:
@@ -675,13 +750,14 @@ if __name__ == "__main__":
     parser.add_argument('--warmup', action='store_true', default=False)
     parser.add_argument('--use_wandb', action='store_true', default=False)
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[-1])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[30_000, 40_000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[30_000, 50_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--gpu", type=str, default = '-1')
     parser.add_argument("--ply_path", type=str, default=None)
     parser.add_argument("--ply_mesh", type=str, default=None)
+    parser.add_argument("--depth_npy_dir", type=str, default=None)
     args = parser.parse_args(sys.argv[1:])
 
     # enable logging
@@ -739,13 +815,14 @@ if __name__ == "__main__":
     # Start GUI server, configure and run training
     # network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
+    args.depth_npy_dir = resolve_depth_npy_dir(args.depth_npy_dir, args.model_path)
     
     # training
-    training(lp.extract(args), op.extract(args), pp.extract(args), dataset,  args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, wandb, logger, args.ply_path, mesh_path=args.ply_mesh)
+    training(lp.extract(args), op.extract(args), pp.extract(args), dataset,  args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, wandb, logger, args.ply_path, mesh_path=args.ply_mesh, depth_npy_dir=args.depth_npy_dir)
     if args.warmup:
         logger.info("\n Warmup finished! Reboot from last checkpoints")
         new_ply_path = os.path.join(args.model_path, f'point_cloud/iteration_{args.iterations}', 'point_cloud.ply')
-        training(lp.extract(args), op.extract(args), pp.extract(args), dataset,  args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, wandb=wandb, logger=logger, ply_path=new_ply_path,mesh_path=args.ply_mesh)
+        training(lp.extract(args), op.extract(args), pp.extract(args), dataset,  args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, wandb=wandb, logger=logger, ply_path=new_ply_path, mesh_path=args.ply_mesh, depth_npy_dir=args.depth_npy_dir)
 
     # All done
     logger.info("\nTraining complete.")
@@ -753,9 +830,9 @@ if __name__ == "__main__":
     # rendering
     logger.info(f'\nStarting Rendering~')
     if args.eval:
-        visible_count = render_sets(lp.extract(args), -1, pp.extract(args), skip_train=True, skip_test=False, wandb=wandb, logger=logger)
+        visible_count = render_sets(lp.extract(args), -1, pp.extract(args), skip_train=True, skip_test=False, wandb=wandb, logger=logger, depth_npy_dir=args.depth_npy_dir)
     else:
-        visible_count = render_sets(lp.extract(args), -1, pp.extract(args), skip_train=False, skip_test=True, wandb=wandb, logger=logger)
+        visible_count = render_sets(lp.extract(args), -1, pp.extract(args), skip_train=False, skip_test=True, wandb=wandb, logger=logger, depth_npy_dir=args.depth_npy_dir)
     logger.info("\nRendering complete.")
 
     # calc metrics

@@ -72,14 +72,15 @@ class DepthRenderer:
         # print(f"[info] current device: {torch.cuda.current_device()} ({torch.cuda.get_device_name(0)})")
 
         try:
-            self.glctx = dr.RasterizeGLContext(
-            output_db=False,     # 不需要 image-space 导数就关掉
-            mode='automatic',    # 默认即可；也可用 'manual' 自己 set/release
-            device=self.device   # 放在同一块 GPU 上
-        )
-        except TypeError:
-            print("[error] nvdiffrast.torch.RasterizeGLContext failed. Ensure you have the correct version of nvdiffrast installed.")
-
+    # 使用 CUDA 渲染上下文而不是 OpenGL（服务器/HPC 必须用 CUDA）
+            self.glctx = dr.RasterizeCudaContext(
+                device=self.device
+            )
+            # print("[info] Using nvdiffrast CUDA rasterizer context.")
+        except Exception as e:
+            print("[error] Failed to initialize RasterizeCudaContext. "
+                "Ensure CUDA is available and nvdiffrast is installed correctly.")
+            raise e
 
 
 
