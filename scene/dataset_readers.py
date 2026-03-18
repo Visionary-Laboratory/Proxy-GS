@@ -31,6 +31,7 @@ from scene.gaussian_model import BasicPointCloud
 import cv2
 
 
+
 class CameraInfo(NamedTuple):
     uid: int
     R: np.array
@@ -42,6 +43,7 @@ class CameraInfo(NamedTuple):
     image_name: str
     width: int
     height: int
+    # is_test: bool
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -73,12 +75,15 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder,test_cam_names_list):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         # if not any(cam_extrinsics[key].name.endswith(f"indoor_DSC065{i}.JPG") for i in range(30, 51)):
         # #     # 满足条件的处理
         #     continue
+        # if idx > 10:
+        #     continue
+
         sys.stdout.write('\r')
         # the exact output you're looking for:
         sys.stdout.write("Reading camera {}/{}".format(idx+1, len(cam_extrinsics)))
@@ -88,6 +93,9 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         intr = cam_intrinsics[extr.camera_id]
         height = intr.height
         width = intr.width
+
+        # if 'aerial' in extr.name.lower():
+        #     continue
 
         uid = intr.id
         R = np.transpose(qvec2rotmat(extr.qvec))
@@ -108,14 +116,18 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         
         # print(f'FovX: {FovX}, FovY: {FovY}')
 
-        image_path = os.path.join(images_folder, os.path.basename(extr.name))
+        image_path = os.path.join(images_folder, extr.name)
         image_name = os.path.basename(image_path).split(".")[0]
+        full_name = image_name + ".jpg" 
+        # if int(image_path.split('/')[-1].split('_')[-1].split('.')[0])%2==0:
+        #     continue
+
         image = Image.open(image_path)
 
         # print(f'image: {image.size}')
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=image_name, width=width, height=height)
+                              image_path=image_path, image_name=image_name, width=width, height=height, is_test=full_name in test_cam_names_list)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
@@ -230,8 +242,8 @@ def readCamerasFromTransforms(path, transformsfile, random_background, white_bac
 
         for idx, frame in enumerate(frames):
 
-            if idx > 10 :
-                continue
+            # if idx > 200 :
+            #     continue
             cam_name = os.path.join(path, frame["file_path"] + extension)
             if not os.path.exists(cam_name):
                 print(f"File {cam_name} does not exist, skipping...")
@@ -300,28 +312,39 @@ def readCamerasFromTransforms(path, transformsfile, random_background, white_bac
                 break
     return cam_infos
 
-def readColmapSceneInfo(path, images, eval, ds, llffhold=8):
-    try:
-        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
-        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
-        cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
-        cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
-    except:
-        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
-        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
-        cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
-        cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
+def readColmapSceneInfo(path, images, eval, ds, llffhold=50):
+    # try:
+    cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
+    cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
+    cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
+    cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+    # except:
+    # cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
+    # cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
+    # cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
+    # cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
     reading_dir = "images" if ds == 1 else f"images_{ds}"
-    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
-    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
+    cam_names = [cam_extrinsics[cam_id].name for cam_id in cam_extrinsics]
+    cam_names = sorted(cam_names)
 
     if eval:
-        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
-        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+        if llffhold:
+            print("------------LLFF HOLD-------------")
+            cam_names = [cam_extrinsics[cam_id].name for cam_id in cam_extrinsics]
+            cam_names = sorted(cam_names)
+            test_cam_names_list = [name for idx, name in enumerate(cam_names) if idx % llffhold == 0]
+        else:
+            with open(os.path.join(path, "sparse/0", "test.txt"), 'r') as file:
+                test_cam_names_list = [line.strip() for line in file]
     else:
-        train_cam_infos = cam_infos
-        test_cam_infos = []
+        test_cam_names_list = []
+    
+    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir), test_cam_names_list=test_cam_names_list)
+    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
+
+    train_cam_infos = [c for c in cam_infos if not c.is_test]
+    test_cam_infos = [c for c in cam_infos if c.is_test]
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 

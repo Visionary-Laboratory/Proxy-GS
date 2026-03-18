@@ -77,7 +77,7 @@ class ModelParams(ParamGroup):
         self.visible_threshold = 0.0 # -1(adaptive) or 0.0 ~ 1.0
         self.update_ratio = 0.2
 
-        self.progressive = False
+        self.progressive = True
         self.dist_ratio = 0.999 # 0.99/0.999
         self.levels = -1 # -1(adaptive) or 0 ~ 
         self.init_level = -1 # -1(adaptive) or 0 ~ levels-1
@@ -150,7 +150,7 @@ class OptimizationParams(ParamGroup):
         
         # for anchor densification
         self.start_stat = 500
-        self.update_from = 1500
+        self.update_from = 8500
         self.coarse_iter = 10000
         self.coarse_factor = 1.5
         self.update_interval = 100

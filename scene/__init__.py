@@ -23,7 +23,7 @@ class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], ply_path=None, logger=None, render_mesh=False):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], ply_path=None, logger=None, render_mesh=False, mesh_path =None):
         """
         :param path: Path to colmap scene main folder.
         """
@@ -83,7 +83,7 @@ class Scene:
                 self.gaussians.load_ply_sparse_gaussian(os.path.join(self.model_path,
                                                             "point_cloud",
                                                             "iteration_" + str(self.loaded_iter),
-                                                            "point_cloud.ply"))
+                                                            "point_cloud.ply"), mesh_path)
                 self.gaussians.load_mlp_checkpoints(os.path.join(self.model_path,
                                                             "point_cloud",
                                                             "iteration_" + str(self.loaded_iter)))
@@ -98,7 +98,7 @@ class Scene:
                     logger.info("Using black background")
                 points = torch.unique(points, dim=0)
                 self.gaussians.set_level(points, self.train_cameras, self.resolution_scales, args.dist_ratio, args.init_level, args.levels)
-                self.gaussians.create_from_pcd(points, self.cameras_extent, logger)
+                self.gaussians.create_from_pcd(points, self.cameras_extent, logger, mesh_path=mesh_path)
 
     def save_ply(self, pcd, ratio, path):
         points = torch.tensor(pcd.points[::ratio]).float().cuda()

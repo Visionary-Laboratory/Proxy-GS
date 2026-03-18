@@ -19,7 +19,30 @@ from diff_gaussian_rasterization_cull_filter import GaussianRasterizer as Gaussi
 from Mesh2DepthHelper import DepthRenderer,Load_ply_resource,Build_Ply_Render_Camera_Parameters_colmap,Build_Ply_Render_Camera_Parameters_default,show_depth_preview, Build_Ply_Render_Camera_Parameters_colmap_correct
 import cv2
 import time
+import open3d as o3d
+import numpy as np
 
+
+def save_pts_world_as_ply(pts_world, save_path="pts_world.ply", color=[1, 0, 0]):
+    """
+    保存世界坐标点为 PLY 点云
+    pts_world: torch.Tensor (N,3)
+    save_path: 输出文件名
+    color: 点颜色 (R,G,B)，范围 [0,1]
+    """
+    if isinstance(pts_world, torch.Tensor):
+        pts_world = pts_world.detach().cpu().numpy()
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(pts_world)
+
+    # 给每个点设置同样的颜色
+    colors = np.tile(np.array(color).reshape(1,3), (pts_world.shape[0], 1))
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+
+    o3d.io.write_point_cloud(save_path, pcd)
+    print(f"✅ Saved {pts_world.shape[0]} points to {save_path}")
+    
 
 def build_rotation(r):
     norm = torch.sqrt(
@@ -102,6 +125,7 @@ def generate_neural_gaussians(viewpoint_camera, pc : GaussianModel, visible_mask
         visible_mask = torch.ones(pc.get_anchor.shape[0], dtype=torch.bool, device = pc.get_anchor.device)
 
     anchor = pc.get_anchor[visible_mask]
+    # save_pts_world_as_ply(anchor, "output/pts_world.ply")
     feat = pc.get_anchor_feat[visible_mask]
     level = pc.get_level[visible_mask]
     grid_offsets = pc._offset[visible_mask]
@@ -244,7 +268,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     
     Background tensor (bg_color) must be on GPU!
     """
-    start = time.time()
+    # start = time.time()
     is_training = pc.get_color_mlp.training
         
     if is_training:
@@ -293,8 +317,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         cov3D_precomp = None)
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
-    end = time.time()
-    print("Rendering time: ", end - start)
+    # end = time.time()
+    # print("Rendering time: ", end - start)
     if is_training:
         return {"render": rendered_image,
                 "viewspace_points": screenspace_points,
@@ -371,7 +395,7 @@ def prefilter_voxel_cull(viewpoint_camera, pc : GaussianModel, pipe, bg_color : 
 
 
 
-def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None):
+def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None, tol = None):
     """
     Render the scene. 
     
@@ -382,7 +406,7 @@ def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch
     tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
     tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
     renderer = DepthRenderer(device=device)
-    start = time.time()
+    # start = time.time()
 
     camera_parameters = Build_Ply_Render_Camera_Parameters_colmap_correct(viewpoint_camera.Fx, viewpoint_camera.Fy, viewpoint_camera.Cx, viewpoint_camera.Cy, viewpoint_camera.image_width, viewpoint_camera.image_height, 0.01, 100.0, \
     viewpoint_camera.R.transpose(-1,-2), viewpoint_camera.T, 'cuda')
@@ -397,11 +421,16 @@ def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch
     depth_m, mask_inf = renderer.render_depth_batched(
         mesh = mesh,camera_parameters=camera_parameters,  max_tris_per_pass=1_000_000_00, flip_y=True,linear_depth=True
     )
-    # depth_m = torch.ones_like(depth_m, device=depth_m.device) * 10000
-    end = time.time()
-    print("Depth rendering time: ", end - start)
 
-    start = time.time()
+    if tol is not None:
+        depth_m = depth_m + tol
+    # depth_m = torch.ones_like(depth_m, device=depth_m.device) * 10000
+    # end = time.time()
+    # print("Depth rendering time: ", end - start)
+    # depth_m = depth_m.clone()
+    # depth_m[mask_inf == 0] = 1000.0
+
+    # start = time.time()
     raster_settings = GaussianRasterizationSettings(
         image_height=int(viewpoint_camera.image_height),
         image_width=int(viewpoint_camera.image_width),
@@ -440,7 +469,7 @@ def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch
     visible_mask = pc._anchor_mask.clone()
     visible_mask[pc._anchor_mask] = radii_pure > 0
 
-    end = time.time()
-    print("Prefiltering time: ", end - start)
+    # end = time.time()
+    # print("Prefiltering time: ", end - start)
 
-    return visible_mask
+    return visible_mask, depth_m

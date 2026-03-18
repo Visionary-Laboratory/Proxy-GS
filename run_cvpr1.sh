@@ -25,18 +25,18 @@ conda activate proxy-gs
 # rm -rf submodules/diff-gaussian-rasterization/build/
 # pip install submodules/diff-gaussian-rasterization
 
-python train.py --eval -s data/small_city/street/pose/block_E -m ouputs_cvpr/block_E_moutain005 \
+python train.py --eval -s data/small_city/street/pose/block_E -m ouputs_cvpr/block_E_reduce10 \
  --ply_path datasets/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply  \
- --ply_mesh cvpr/block_E_moutain005.ply \
+ --ply_mesh cvpr/block_E_reduce10.ply \
  --use_wandb
 
-python render_real.py -m ouputs_cvpr/block_E_moutain005 --skip_train --ply_path  datasets/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply \
- --ply_mesh cvpr/block_E_moutain005.ply -s data/small_city/street/pose/block_E
+python render_real.py -m ouputs_cvpr/block_E_reduce10 --skip_train --ply_path  datasets/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply \
+ --ply_mesh cvpr/block_E_reduce10.ply -s data/small_city/street/pose/block_E
 
 
 
 
-python metrics.py  -m ouputs_cvpr/block_E_moutain005 -s data/small_city/street/pose/block_E
+python metrics.py  -m ouputs_cvpr/block_E_reduce10 -s data/small_city/street/pose/block_E
 # python render_real.py -m ouputs/hier_smallcity_ours_base_1_04_wo_densify_tao01 --skip_train --ply_path  data/hirarchy/small_city/camera_calibration/rectified/sparse/0/points3D.ply \
 #  --ply_mesh data/hirarchy/small_city/camera_calibration/rectified/tsdf_fusion_post_smallcity.ply -s data/hirarchy/small_city/camera_calibration/rectified
 

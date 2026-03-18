@@ -18,6 +18,19 @@ output
 datasets
 ouputs
 small_city
-submodules
+# submodules
 *.out
 gs_datasets
+real
+synthetic
+*.npy
+3dgs_ply.zip
+CLAUDE.md
+*.zip
+*.png
+*.pdf
+cvpr
+ouputs*
+output*
+mesh_output
+*.ply

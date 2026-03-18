@@ -96,11 +96,11 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
     depths_tsdf_fusion = []
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        path = view.image_path.replace("train/small_city_road_horizon/", "depth/small_city_road_horizon_depth/")
-        # path= re.sub(
-        # r"train/(block_\d+)",
-        # r"depth/aerial/train/\1_depth",
-        # view.image_path)
+        # path = view.image_path.replace("train/small_city_road_horizon/", "depth/small_city_road_horizon_depth/")
+        path= re.sub(
+        r"train/(block_\d+)",
+        r"depth/aerial/train/\1_depth",
+        view.image_path)
         # path
         path = path.replace("png", "exr")
         depth = read_exr_to_tensor(path)
@@ -184,7 +184,7 @@ def post_process_mesh(mesh, cluster_to_keep=1):
     print("num vertices post {}".format(len(mesh_0.vertices)))
     return mesh_0
      
-def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, show_level : bool, ape_code : int, max_depth : float, voxel_size : float, num_cluster: int, use_depth_filter : bool, ply_path=None):
+def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, show_level : bool, ape_code : int, max_depth : float, voxel_size : float, num_cluster: int, use_depth_filter : bool, ply_path=None, ply_mesh=None):
     with torch.no_grad():
         gaussians = GaussianModel(
             dataset.feat_dim, dataset.n_offsets, dataset.fork, dataset.use_feat_bank, dataset.appearance_dim, 
@@ -238,11 +238,12 @@ if __name__ == "__main__":
     parser.add_argument("--skip_test", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--show_level", action="store_true")
-    parser.add_argument("--max_depth", default=20.0, type=float)
-    parser.add_argument("--voxel_size", default=0.01, type=float)
+    parser.add_argument("--max_depth", default=5.0, type=float)
+    parser.add_argument("--voxel_size", default=0.004, type=float)
     parser.add_argument("--num_cluster", default=1, type=int)
     parser.add_argument("--use_depth_filter", action="store_true")
     parser.add_argument("--ply_path", type=str, default=None)
+    # parser.add_argument("--ply_mesh", type=str, default=None)
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
 

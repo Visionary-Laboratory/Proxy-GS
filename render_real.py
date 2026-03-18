@@ -50,7 +50,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         torch.cuda.synchronize(); t0 = time.time()
 
         gaussians.set_anchor_mask(view.camera_center, iteration, view.resolution_scale)
-        voxel_visible_mask = prefilter_voxel(view, gaussians, pipeline, background)
+        voxel_visible_mask, depth_m = prefilter_voxel(view, gaussians, pipeline, background)
         render_pkg = render(view, gaussians, pipeline, background, visible_mask=voxel_visible_mask, ape_code=ape_code)
         
         torch.cuda.synchronize(); t1 = time.time()
@@ -61,8 +61,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         per_view_dict['{0:05d}'.format(idx)+".png"] = visible_count.item()
 
         gt = view.original_image[0:3, :, :]
-        # torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
-        # torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
+        torchvision.utils.save_image(rendering, os.path.join(render_path,view.image_name + ".png"))
+        torchvision.utils.save_image(gt, os.path.join(gts_path,view.image_name + ".png"))
         # show_depth_preview(depth_m, mask_inf,os.path.join(depth_path, '{0:05d}'.format(idx) + ".png"), invert=False, q=(0.02, 0.98))
         if show_level:
             for cur_level in range(gaussians.levels):
@@ -86,14 +86,14 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         with open(os.path.join(model_path, name, "ours_{}".format(iteration), "per_view_count_level.json"), 'w') as fp:
             json.dump(per_view_level_dict, fp, indent=True)     
      
-def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, show_level : bool, ape_code : int, ply_path=None):
+def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, show_level : bool, ape_code : int, ply_path=None, ply_mesh=None):
     with torch.no_grad():
         gaussians = GaussianModel(
             dataset.feat_dim, dataset.n_offsets, dataset.fork, dataset.use_feat_bank, dataset.appearance_dim, 
             dataset.add_opacity_dist, dataset.add_cov_dist, dataset.add_color_dist, dataset.add_level, 
             dataset.visible_threshold, dataset.dist2level, dataset.base_layer, dataset.progressive, dataset.extend
         )
-        scene = Scene(dataset, gaussians, load_iteration=iteration,  ply_path=ply_path, shuffle=False, resolution_scales=dataset.resolution_scales)
+        scene = Scene(dataset, gaussians, load_iteration=iteration,  ply_path=ply_path, shuffle=False, resolution_scales=dataset.resolution_scales, mesh_path=ply_mesh)
         gaussians.eval()
         gaussians.plot_levels()
         if dataset.random_background:
@@ -124,11 +124,12 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--show_level", action="store_true")
     parser.add_argument("--ply_path", type=str, default=None)
+    parser.add_argument("--ply_mesh", type=str, default=None)
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
 
     # Initialize system state (RNG)
     safe_state(args.quiet)
 
-    render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test, args.show_level, args.ape, args.ply_path)
+    render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test, args.show_level, args.ape, args.ply_path, args.ply_mesh)
     

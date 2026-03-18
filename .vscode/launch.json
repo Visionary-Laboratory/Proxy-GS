@@ -8,9 +8,11 @@
             "program": "${workspaceFolder}/train.py",
             "args": [
                 "--eval",
-                "-s","data/small_city/aerial/pose/block_E",
-                "-m", "ouputs/Block-E-test",
-                "--ply_path", "data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply"
+                "-s","data/hirarchy/small_city/camera_calibration/rectified",
+                "-m", "ouputs//hirarchy_small_city_test",
+                "--ply_path", "data/berlin/sparse/0/points3D.ply",
+                "--ply_mesh","data/hirarchy/small_city/camera_calibration/rectified/tsdf_fusion_post_smallcity.ply",
+                "--resolution", "4",
                 // "--use_wandb"
             ],
         },
@@ -20,10 +22,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/render.py",
             "args": [
-                "-m", "ouputs/Block-E-Horizon_add_1",
+                "-m", "ouputs/Block-E",
                 // "--use_wandb"
                 "--skip_test",
-                "--ply_path", "data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_A.ply",
+                "--ply_path", "data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply",
             ],
         },
         {
@@ -32,11 +34,12 @@
             "request": "launch",
             "program": "${workspaceFolder}/render_real.py",
             "args": [
-                "-m", "ouputs/Block-E-Horizon_add_1",
+                "-m", "ouputs/Block-E-Horizon-ours-wo-proxygrid",
                 // "--use_wandb"
                 "-s", "data/small_city/street/pose/block_E",
-                "--skip_test",
-                "--ply_path", "data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_A.ply",
+                "--skip_train",
+                "--ply_path", "data/hirarchy/small_city/camera_calibration/rectified/sparse/0/points3D.ply",
+                "--ply_mesh", "ouputs/Block-E/mesh_old/tsdf_fusion_post.ply",
             ],
         },
         {
@@ -52,3 +55,4 @@
         }
     ]
 }
+

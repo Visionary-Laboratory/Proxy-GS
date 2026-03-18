@@ -42,7 +42,7 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
-
+import torch.nn.functional as F
 # torch.set_num_threads(32)
 lpips_fn = lpips.LPIPS(net='vgg').to('cuda')
 
@@ -77,7 +77,51 @@ def saveRuntimeCode(dst: str) -> None:
     print('Backup Finished!')
 
 
-def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, wandb=None, logger=None, ply_path=None):
+import math
+
+def depth_tolerance(iteration, total_iters, max_tol=1.0, min_tol=0.0, mode='cosine'):
+    """
+    根据迭代数动态调整 depth 容忍度
+    iteration: 当前迭代数
+    total_iters: 总迭代数
+    max_tol: 最大容忍度
+    min_tol: 最小容忍度
+    mode: 'linear' 或 'cosine'
+    """
+    progress = min(1.0, iteration / total_iters)
+
+    if mode == 'linear':
+        tol = min_tol + (max_tol - min_tol) * progress
+    elif mode == 'cosine':
+        # 先快后慢，符合 curriculum learning
+        tol = min_tol + (max_tol - min_tol) * (1 - math.cos(math.pi * progress)) / 2
+    else:
+        raise ValueError("mode must be 'linear' or 'cosine'")
+
+    return tol
+
+
+@torch.no_grad()
+def depth_mask(gs_depth, depth_m, iteration, total_iters,
+               max_tol=1.0, min_tol=0.05, mode='cosine'):
+    """
+    输入:
+      gs_depth: [N] 每个高斯到相机的深度
+      depth_m: [H,W] 深度图
+    输出:
+      mask: [N] 布尔，是否保留
+    """
+    tol = depth_tolerance(iteration, total_iters,
+                          max_tol=max_tol, min_tol=min_tol, mode=mode)
+    # 这里需要你有办法把 gs 对应到像素 (u,v)，拿到 depth_m[u,v]
+    # 假设你已经有 matched_depth: [N] 每个GS对应像素的深度
+    matched_depth = sample_depth_for_gs(gs_depth, depth_m)  # TODO: 你已有实现
+
+    mask = (gs_depth >= matched_depth - tol) & (gs_depth <= matched_depth + tol)
+    return mask
+
+
+def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, wandb=None, logger=None, ply_path=None, mesh_path=None):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(
@@ -85,7 +129,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
         dataset.add_opacity_dist, dataset.add_cov_dist, dataset.add_color_dist, dataset.add_level, 
         dataset.visible_threshold, dataset.dist2level, dataset.base_layer, dataset.progressive, dataset.extend
     )
-    scene = Scene(dataset, gaussians, ply_path=ply_path, shuffle=False, logger=logger, resolution_scales=dataset.resolution_scales)
+    scene = Scene(dataset, gaussians, ply_path=ply_path, shuffle=False, logger=logger, resolution_scales=dataset.resolution_scales, mesh_path= mesh_path)
     gaussians.training_setup(opt)
     gaussians.set_coarse_interval(opt.coarse_iter, opt.coarse_factor)
     if checkpoint:
@@ -99,6 +143,9 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
+    # 7x7 平均卷积核
+    kernel = torch.ones((1,1,7,7), device='cuda') / (7*7)
+    epoch = 0
     for iteration in range(first_iter, opt.iterations + 1):        
         # network gui not available in octree-gs yet
         if network_gui.conn == None:
@@ -130,6 +177,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
         
         # Pick a random Camera
         if not viewpoint_stack:
+            epoch = epoch + 1
             viewpoint_stack = scene.getTrainCameras().copy()
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
@@ -138,7 +186,41 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
             pipe.debug = True
         
         gaussians.set_anchor_mask(viewpoint_cam.camera_center, iteration, viewpoint_cam.resolution_scale)
-        voxel_visible_mask = prefilter_voxel(viewpoint_cam, gaussians, pipe, background)
+
+
+        # max_tol = 1.5 
+        # min_tol = 0
+
+        # total_iters = 40_000
+
+        # tol = depth_tolerance(iteration, total_iters,
+        #                   max_tol=max_tol, min_tol=min_tol, mode='cosine')         
+
+
+
+        voxel_visible_mask,  depth_m = prefilter_voxel(viewpoint_cam, gaussians, pipe, background)
+
+
+        ##add_dropout
+        # true_indices = voxel_visible_mask.nonzero(as_tuple=True)[0]
+
+        # if true_indices.numel() > 0:
+        #     # 随机选择 2% 的 true 索引
+        #     num_to_drop = max(1, int(0.02 * true_indices.numel()))
+        #     sampled_idx = true_indices[torch.randperm(true_indices.numel())[:num_to_drop]]
+        #     # 把这些位置设为 False
+        #     voxel_visible_mask[sampled_idx] = False
+
+        # false_indices = (~voxel_visible_mask).nonzero(as_tuple=True)[0]
+        # if false_indices.numel() > 0:
+        #     num_to_keep = max(1, int(0.05 * false_indices.numel()))  # 随机保留 5%
+        #     sampled_idx = false_indices[torch.randperm(false_indices.numel())[:num_to_keep]]
+        #     voxel_visible_mask[sampled_idx] = True
+  
+
+
+
+
         retain_grad = (iteration < opt.update_until and iteration >= 0)
         render_pkg = render(viewpoint_cam, gaussians, pipe, background, visible_mask=voxel_visible_mask, retain_grad=retain_grad)
         
@@ -148,10 +230,35 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
         # final_mask[voxel_visible_mask] = mask_mesh
         # voxel_visible_mask = final_mask
 
-
+        if viewpoint_cam.alpha_mask is not None:
+            alpha_mask = viewpoint_cam.alpha_mask.cuda()
+            image *= alpha_mask
 
         gt_image = viewpoint_cam.original_image.cuda()
+        
+        
         Ll1 = l1_loss(image, gt_image)
+
+        
+        
+        # if  epoch  ==  11:
+        #     if iteration % 1 == 0 :
+        #         with torch.no_grad():
+        #             pixel_loss_map = torch.abs((image - gt_image)).mean(dim=0).unsqueeze(0).unsqueeze(0)  # (1,1,H,W) 
+                    
+        #             patch_loss_map = F.conv2d(pixel_loss_map, kernel, stride=7, padding=3)  # (1,1,H,W)
+                    
+        #             patch_loss_map = patch_loss_map.squeeze(0).squeeze(0)   # (H//7, W//7)
+
+        #             # 找到超过阈值的 patch 索引
+        #             ys, xs = torch.where(patch_loss_map > 2*Ll1)
+
+        #             # 映射回原图坐标 (patch 中心)
+        #             patch_size = 7
+        #             ys_pixel = ys * patch_size + patch_size // 2
+        #             xs_pixel = xs * patch_size + patch_size // 2
+    
+            # gaussians.anchor_growing_by_mesh(xs_pixel, ys_pixel, depth_m, viewpoint_cam)
 
         ssim_loss = (1.0 - ssim(image, gt_image))
         if scaling.shape[0] > 0:
@@ -164,7 +271,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
         
         iter_end.record()
         anchor_number_use = voxel_visible_mask.sum()
-
+        anchor_number_sum = gaussians._anchor.shape[0]
 
         with torch.no_grad():
             # Progress bar
@@ -177,7 +284,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
                 progress_bar.close()
 
             # Log and save
-            training_report(tb_writer, dataset_name, iteration, anchor_number_use, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background), wandb, logger)
+            training_report(tb_writer, dataset_name, iteration, anchor_number_use, anchor_number_sum, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background), wandb, logger)
             if (iteration in saving_iterations):
                 logger.info("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
@@ -189,6 +296,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
                 
                 # densification
                 if opt.update_anchor and iteration > opt.update_from and iteration % opt.update_interval == 0:
+                    # if epoch != 11 or 12 :
                     gaussians.adjust_anchor(
                         iteration=iteration,
                         check_interval=opt.update_interval, 
@@ -197,13 +305,76 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
                         update_ratio=dataset.update_ratio,
                         extra_ratio=dataset.extra_ratio,
                         extra_up=dataset.extra_up,
-                        min_opacity=opt.min_opacity
+                        min_opacity=opt.min_opacity 
                     )
+            if iteration == 3 * len(scene.getTrainCameras()) or iteration == 6 * len(scene.getTrainCameras()):
+                new_anchors_world = []
+                for viewpoint_cam in scene.getTrainCameras():
+                    gaussians.set_anchor_mask(viewpoint_cam.camera_center, iteration, viewpoint_cam.resolution_scale)
+                    voxel_visible_mask,  depth_m = prefilter_voxel(viewpoint_cam, gaussians, pipe, background)
+                    retain_grad = (iteration < opt.update_until and iteration >= 0)
+                    render_pkg = render(viewpoint_cam, gaussians, pipe, background, visible_mask=voxel_visible_mask, retain_grad=retain_grad)
+                    image = render_pkg["render"]
+                    gt_image = viewpoint_cam.original_image.cuda()                    
+                    Ll1 = l1_loss(image, gt_image)
+                    
+                    pixel_loss_map = torch.abs((image - gt_image)).mean(dim=0).unsqueeze(0).unsqueeze(0)  # (1,1,H,W) 
+                    
+                    patch_loss_map = F.conv2d(pixel_loss_map, kernel, stride=7, padding=3)  # (1,1,H,W)
+                    
+                    patch_loss_map = patch_loss_map.squeeze(0).squeeze(0)   # (H//7, W//7)
+
+                    # 找到超过阈值的 patch 索引
+                    ys, xs = torch.where(patch_loss_map > 3*Ll1)   ## 统计下loss相对于平均值的分布
+
+                    # 映射回原图坐标 (patch 中心)
+                    patch_size = 7
+                    H, W = image.shape[-2:]
+                    ys_pixel = (ys * patch_size + patch_size // 2).clamp(0, H-1)
+                    xs_pixel = (xs * patch_size + patch_size // 2).clamp(0, W-1)
+                    
+                    device = gaussians._anchor.device
+
+                    fx, fy, cx, cy = viewpoint_cam.Fx, viewpoint_cam.Fy, viewpoint_cam.Cx, viewpoint_cam.Cy
+                    R = viewpoint_cam.R
+                    t = viewpoint_cam.T
+
+                    # === Step1: back-project (像素->相机系) ===
+                    zs = depth_m[ys_pixel, xs_pixel]   # (N,)
+                    xs = (xs_pixel - cx) * zs / fx
+                    ys = (ys_pixel - cy) * zs / fy
+                    pts_cam = torch.stack([xs, ys, zs], dim=1).to(device).float()
+
+                    mask = torch.isfinite(pts_cam).all(dim=1) & torch.isfinite(zs) & (zs > 0)
+                     
+                    pts_cam_new = pts_cam[mask]
+
+                    # === Step2: 相机->世界 (用 C2W) ===
+                    Rt = np.zeros((4, 4), dtype=np.float32)
+                    Rt[:3, :3] = R.transpose()
+                    Rt[:3, 3] = t
+                    Rt[3, 3] = 1.0
+
+                    C2W = np.linalg.inv(Rt)   # camera->world
+                    C2W = torch.from_numpy(C2W).to(device).float()
+
+                    ones = torch.ones((pts_cam_new.shape[0], 1), device=device)
+                    pts_cam_h = torch.cat([pts_cam_new, ones], dim=1)   # (M,4)
+                    pts_world_h = (C2W @ pts_cam_h.T).T             # (M,4)
+                    pts_world = pts_world_h[:, :3]                  # (M,3)        
+                    new_anchors_world.append(pts_world)
+                new_anchors_world = torch.cat(new_anchors_world, dim=0)
+                gaussians.anchor_growing_by_mesh(new_anchors_world)
+                    
+                    
+                        
             elif iteration == opt.update_until:
                 del gaussians.opacity_accum
                 del gaussians.offset_gradient_accum
                 del gaussians.offset_denom
                 torch.cuda.empty_cache()
+            
+
                     
             # Optimizer step
             if iteration < opt.iterations:
@@ -235,7 +406,7 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-def training_report(tb_writer, dataset_name, iteration, anchor_number_use , Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, wandb=None, logger=None):
+def training_report(tb_writer, dataset_name, iteration, anchor_number_use , anchor_number_sum, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, wandb=None, logger=None):
     if tb_writer:
         tb_writer.add_scalar(f'{dataset_name}/train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar(f'{dataset_name}/train_loss_patches/total_loss', loss.item(), iteration)
@@ -245,6 +416,7 @@ def training_report(tb_writer, dataset_name, iteration, anchor_number_use , Ll1,
     if wandb is not None:
         wandb.log({"train_l1_loss":Ll1, 'train_total_loss':loss, })
         wandb.log({"anchor_number_use":anchor_number_use, })
+        wandb.log({"anchor_number_sum": anchor_number_sum, })
     
     # Report test and samples of training set
     if iteration in testing_iterations:
@@ -267,7 +439,7 @@ def training_report(tb_writer, dataset_name, iteration, anchor_number_use , Ll1,
 
                 for idx, viewpoint in enumerate(config['cameras']):
                     scene.gaussians.set_anchor_mask(viewpoint.camera_center, iteration, viewpoint.resolution_scale)
-                    voxel_visible_mask = prefilter_voxel(viewpoint, scene.gaussians, *renderArgs)
+                    voxel_visible_mask, depth_m = prefilter_voxel(viewpoint, scene.gaussians, *renderArgs)
                     image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs, visible_mask=voxel_visible_mask)["render"], 0.0, 1.0)
                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
                     if tb_writer and (idx < 30):
@@ -503,12 +675,13 @@ if __name__ == "__main__":
     parser.add_argument('--warmup', action='store_true', default=False)
     parser.add_argument('--use_wandb', action='store_true', default=False)
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[-1])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[40_000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[30_000, 40_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--gpu", type=str, default = '-1')
     parser.add_argument("--ply_path", type=str, default=None)
+    parser.add_argument("--ply_mesh", type=str, default=None)
     args = parser.parse_args(sys.argv[1:])
 
     # enable logging
@@ -568,11 +741,11 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
     
     # training
-    training(lp.extract(args), op.extract(args), pp.extract(args), dataset,  args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, wandb, logger, args.ply_path)
+    training(lp.extract(args), op.extract(args), pp.extract(args), dataset,  args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, wandb, logger, args.ply_path, mesh_path=args.ply_mesh)
     if args.warmup:
         logger.info("\n Warmup finished! Reboot from last checkpoints")
         new_ply_path = os.path.join(args.model_path, f'point_cloud/iteration_{args.iterations}', 'point_cloud.ply')
-        training(lp.extract(args), op.extract(args), pp.extract(args), dataset,  args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, wandb=wandb, logger=logger, ply_path=new_ply_path)
+        training(lp.extract(args), op.extract(args), pp.extract(args), dataset,  args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, wandb=wandb, logger=logger, ply_path=new_ply_path,mesh_path=args.ply_mesh)
 
     # All done
     logger.info("\nTraining complete.")

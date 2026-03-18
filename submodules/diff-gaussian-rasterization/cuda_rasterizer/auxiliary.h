@@ -212,11 +212,11 @@ __forceinline__ __device__ bool in_frustum_depth(int idx,
     }
 
     // 读取深度；深度必须与 p_view.z 同“方向/单位”
-    float d = depth[v * W + u] * 1.2 + 1;
-    if (!isfinite(d) || d <= 0.f) {
-        // 无效深度：放行
-        return true;
-    }
+    float d = depth[v * W + u] * 1.2 ;
+    // if (!isfinite(d) || d <= 0.f) {
+    //     // 无效深度：放行
+    //     return true;
+    // }
     // d *= depth_scale;  // 单位不一致时可用（例如 d 是毫米而 p_view.z 是米）
 
     // 仅做深度比较：在前景后面 → 过滤

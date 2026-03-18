@@ -48,16 +48,20 @@ class Camera(nn.Module):
         self.Fy = fov2focal(FoVy, self.image_height)
         self.Cx = 0.5 * self.image_width
         self.Cy = 0.5 * self.image_height
-        if gt_alpha_mask is not None:
-            self.original_image *= gt_alpha_mask.to(self.data_device)
-        else:
-            self.original_image *= torch.ones((1, self.image_height, self.image_width), device=self.data_device)
+        # self
+        self.alpha_mask = None
+        
+        # if gt_alpha_mask is not None:
+        #     self.original_image *= gt_alpha_mask.to(self.data_device)
+        # else:
+        self.original_image *= torch.ones((1, self.image_height, self.image_width), device=self.data_device)
 
         self.zfar = 100.0
         self.znear = 0.01
 
         self.trans = trans
         self.scale = scale
+        
 
         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda()
         self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()

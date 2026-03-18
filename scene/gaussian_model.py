@@ -26,8 +26,29 @@ from utils.general_utils import strip_symmetric, build_scaling_rotation
 from scene.embedding import Embedding
 from einops import repeat
 import math
+import open3d as o3d
 from Mesh2DepthHelper import DepthRenderer,Load_ply_resource,Build_Ply_Render_Camera_Parameters_colmap,Build_Ply_Render_Camera_Parameters_default,show_depth_preview
 
+
+def save_pts_world_as_ply(pts_world, save_path="pts_world.ply", color=[1, 0, 0]):
+    """
+    保存世界坐标点为 PLY 点云
+    pts_world: torch.Tensor (N,3)
+    save_path: 输出文件名
+    color: 点颜色 (R,G,B)，范围 [0,1]
+    """
+    if isinstance(pts_world, torch.Tensor):
+        pts_world = pts_world.detach().cpu().numpy()
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(pts_world)
+
+    # 给每个点设置同样的颜色
+    colors = np.tile(np.array(color).reshape(1,3), (pts_world.shape[0], 1))
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+
+    o3d.io.write_point_cloud(save_path, pcd)
+    print(f"✅ Saved {pts_world.shape[0]} points to {save_path}")
 
 class GaussianModel:
 
@@ -298,13 +319,13 @@ class GaussianModel:
         time_diff = t1 - t0
         print(f"Building octree time: {int(time_diff // 60)} min {time_diff % 60} sec")
 
-    def create_from_pcd(self, points, spatial_lr_scale, logger=None):
+    def create_from_pcd(self, points, spatial_lr_scale, logger=None, mesh_path=None):
         self.spatial_lr_scale = spatial_lr_scale
         box_min = torch.min(points)*self.extend
         box_max = torch.max(points)*self.extend
         box_d = box_max - box_min
         if self.base_layer < 0:
-            default_voxel_size = 0.01
+            default_voxel_size = 0.04
             self.base_layer = torch.round(torch.log2(box_d/default_voxel_size)).int().item()-(self.levels//2)+1
         self.voxel_size = box_d/(float(self.fork) ** self.base_layer)
         self.init_pos = torch.tensor([box_min, box_min, box_min]).float().cuda()
@@ -315,7 +336,7 @@ class GaussianModel:
             self.positions, self._level, self.visible_threshold, _ = self.weed_out(self.positions, self._level)
         self.positions, self._level, _, _ = self.weed_out(self.positions, self._level)
 
-        self.mesh = Load_ply_resource("ouputs/Block-E-Horizon_add_1/mesh/tsdf_fusion_post_street_all.ply",'cuda')
+        self.mesh = Load_ply_resource(mesh_path,'cuda')
         # self.mesh =
         print(f'Branches of Tree: {self.fork}')
         print(f'Base Layer of Tree: {self.base_layer}')
@@ -541,7 +562,7 @@ class GaussianModel:
             level_mask = (self._level == level).squeeze(dim=1)
             print(f'Level {level}: {torch.sum(level_mask).item()}, Ratio: {torch.sum(level_mask).item()/self._level.shape[0]}')
 
-    def load_ply_sparse_gaussian(self, path):
+    def load_ply_sparse_gaussian(self, path, mesh_path):
         plydata = PlyData.read(path)
 
         anchor = np.stack((np.asarray(plydata.elements[0]["x"]),
@@ -581,8 +602,8 @@ class GaussianModel:
             offsets[:, idx] = np.asarray(plydata.elements[0][attr_name]).astype(np.float32)
         offsets = offsets.reshape((offsets.shape[0], 3, -1))
 
-
-        self.mesh = Load_ply_resource("ouputs/Block-E/mesh/tsdf_fusion_post.ply", 'cuda')
+        if mesh_path is not None:
+            self.mesh = Load_ply_resource(mesh_path, 'cuda')
         self._anchor_feat = nn.Parameter(torch.tensor(anchor_feats, dtype=torch.float, device="cuda").requires_grad_(True))
         self._level = torch.tensor(levels, dtype=torch.int, device="cuda")
         self._extra_level = torch.tensor(extra_levels, dtype=torch.float, device="cuda").squeeze(dim=1)
@@ -803,7 +824,7 @@ class GaussianModel:
                 new_feat = self._anchor_feat.unsqueeze(dim=1).repeat([1, self.n_offsets, 1]).view([-1, self.feat_dim])[candidate_mask]
                 new_feat = scatter_max(new_feat, inverse_indices.unsqueeze(1).expand(-1, new_feat.size(1)), dim=0)[0][remove_duplicates]
                 new_feat_ds = torch.zeros([candidate_anchor_ds.shape[0], self.feat_dim], dtype=torch.float, device='cuda')
-                new_feat = torch.cat([new_feat, new_feat_ds], dim=0)
+                new_feat = torch.cat([new_feat, new_feat_ds], dim=0)  #以0作为初始化在后期容易被prune
                 
                 new_scaling = torch.ones_like(candidate_anchor).repeat([1,2]).float().cuda()*cur_size # *0.05
                 new_scaling_ds = torch.ones_like(candidate_anchor_ds).repeat([1,2]).float().cuda()*ds_size # *0.05
@@ -856,6 +877,310 @@ class GaussianModel:
                 self._level = torch.cat([self._level, new_level], dim=0)
                 self._extra_level = torch.cat([self._extra_level, new_extra_level], dim=0)
 
+
+
+
+    def getCam2World(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
+        """
+        从 COLMAP 风格的 R, t 构造 camera-to-world (C2W) 变换矩阵
+        """
+        Rt = np.zeros((4, 4), dtype=np.float32)
+        Rt[:3, :3] = R.transpose()   # 世界->相机转置
+        Rt[:3, 3] = t
+        Rt[3, 3] = 1.0
+
+        # W2C -> 取逆 = C2W
+        C2W = np.linalg.inv(Rt)
+
+        # 调整 camera center
+        cam_center = C2W[:3, 3]
+        cam_center = (cam_center + translate) * scale
+        C2W[:3, 3] = cam_center
+        return np.float32(C2W)
+    
+    
+    @torch.no_grad()
+    def knn_indices(self, ref_pts: torch.Tensor, qry_pts: torch.Tensor, k: int = 1, chunk: int = 8192):
+        """
+        ref_pts: (M,3)  现有 anchor 位置 self._anchor
+        qry_pts: (N,3)  新 anchor 位置 pts_world
+        返回:
+        - d_all: (N,k) 每个新点到 kNN 的距离
+        - i_all: (N,k) 每个新点对应的 ref 索引
+        采用分块 cdist 防止 OOM
+        """
+        N = qry_pts.shape[0]
+        d_list, i_list = [], []
+        for s in range(0, N, chunk):
+            e = min(s + chunk, N)
+            d = torch.cdist(qry_pts[s:e], ref_pts)              # (n, M)
+            d_k, i_k = torch.topk(d, k=min(k, ref_pts.shape[0]), dim=1, largest=False)
+            d_list.append(d_k); i_list.append(i_k)
+        return torch.cat(d_list, dim=0), torch.cat(i_list, dim=0)
+
+
+
+
+
+    def select_top_voxel_anchors(pts_world, weights, init_pos, cur_size, top_ratio=0.2, self=None):
+        """
+        从点云里选出 top_ratio 的 voxel，并初始化为新 anchor
+        pts_world: (N,3)
+        weights:   (N,)
+        init_pos:  (3,)
+        cur_size:  float
+        top_ratio: float, 比如 0.2 表示取前 20%
+        self:      模型本身 (拿已有 anchor/feat 初始化用)
+
+        return:
+        new_anchor: (K,3) 新 anchor
+        new_feat:   (K,C) 初始化 feature
+        """
+        device = pts_world.device
+
+        # === Step1: voxel 投票 ===
+        q = torch.round((pts_world - init_pos) / cur_size).to(torch.int32)  # (N,3)
+        q_unique, inverse = torch.unique(q, dim=0, return_inverse=True)     # (M,3), (N,)
+
+        scores = torch.zeros(q_unique.shape[0], device=device).scatter_add(
+            0, inverse, weights
+        )  # (M,)
+
+        sum_pos = torch.zeros(q_unique.shape[0], 3, device=device).scatter_add(
+            0, inverse.unsqueeze(-1).expand(-1, 3), pts_world * weights.unsqueeze(-1)
+        )  # (M,3)
+
+        centers = sum_pos / scores.unsqueeze(-1).clamp_min(1e-6)  # (M,3)
+
+        # === Step2: 选 top 20% voxel ===
+        M = scores.shape[0]
+        k = max(1, int(M * top_ratio))
+        topk_idx = torch.topk(scores, k=k, dim=0).indices
+
+        new_anchor = centers[topk_idx]  # (K,3)
+
+        # === Step3: knn 初始化 ===
+        exist_pos  = self._anchor.detach()
+        exist_feat = self._anchor_feat.detach()
+        exist_slog = self._scaling.detach()
+        exist_rot  = self._rotation.detach()
+
+        d_knn = torch.cdist(new_anchor, exist_pos)          # (K,M)
+        nn_idx = d_knn.argmin(dim=1)                        # 最近邻索引 (K,)
+
+        new_feat = exist_feat[nn_idx]                       # (K,C)
+        new_scaling = exist_slog[nn_idx]                    # (K,6)
+        new_rotation = exist_rot[nn_idx]
+        new_rotation = new_rotation / (new_rotation.norm(dim=1, keepdim=True) + 1e-8)
+
+        return new_anchor, new_feat, new_scaling, new_rotation
+
+
+    def accumulate_votes(self, pts_world: torch.Tensor,
+                        weights: torch.Tensor,
+                        init_pos: torch.Tensor,
+                        cur_size: float):
+        """
+        矢量化体素投票，不用 for 循环。
+        pts_world: (N,3)
+        weights:   (N,)
+        init_pos:  (3,) 参考点
+        cur_size:  float 体素大小
+        return:
+        voxel_coords: (M,3) int，每个唯一体素坐标
+        scores: (M,) float，该体素累计得分
+        sum_pos: (M,3) float，该体素加权位置和
+        counts: (M,) int，该体素点数
+        """
+        device = pts_world.device
+        
+        N = pts_world.shape[0]
+        
+        # === Step1: 量化到体素坐标 ===
+        q = torch.round((pts_world - init_pos) / cur_size).to(torch.int32)  # (N,3)
+
+        # === Step2: 找唯一体素 + 反向索引 ===
+        q_unique, inverse = torch.unique(q, dim=0, return_inverse=True)     # (M,3), (N,)
+        weights = torch.ones(N, device=device)
+        # === Step3: 累加 ===
+        scores = torch.zeros(q_unique.shape[0], device=device)
+        scores = scores.scatter_add(0, inverse, weights)   # (M,) # (M,)
+
+        counts = torch.zeros(q_unique.shape[0], device=device, dtype=torch.int32).scatter_add(
+            0, inverse, torch.ones_like(weights, dtype=torch.int32)
+        )
+
+        sum_pos = torch.zeros(q_unique.shape[0], 3, device=device).scatter_add(
+            0, inverse.unsqueeze(-1).expand(-1, 3), pts_world * weights.unsqueeze(-1)
+        )  # (M,3)
+        
+        top_ratio = 0.2
+        
+        centers = sum_pos / scores.unsqueeze(-1).clamp_min(1e-6)  # (M,3)
+        
+        M = scores.shape[0]
+        k = max(1, int(M * top_ratio))
+        topk_idx = torch.topk(scores, k=k, dim=0).indices
+
+        new_anchor = centers[topk_idx]  # (K,3)
+
+        return new_anchor
+
+
+
+    def anchor_growing_by_mesh(self, pts_world):
+        """
+        根据像素坐标和 GT 深度，在世界坐标系下生长新的 anchor
+        xs_pixel, ys_pixel: (N,) 像素坐标
+        depth_m: (H,W) GT 深度图
+        viewpoint_cam: 包含 K, R, t 的相机
+        """
+        device = self._anchor.device
+
+        weights = 1
+
+
+        pts_world_top20 = self.accumulate_votes(pts_world, weights, self.init_pos, 0.001)
+
+        # 加权质心
+        # centers = sum_pos / scores.unsqueeze(-1).clamp_min(1e-6)  # (M,3)
+
+        # === Step3: 保存 PLY ===
+        # save_pts_world_as_ply(pts_world, "output/pts_world.ply")
+
+
+        # 相机->世界
+        # pts_world = (R.T @ (pts_world_clean - t).T).T   # (N,3)
+
+        # === Step2: init new params ===
+        n_new = pts_world_top20.shape[0]
+
+        new_anchor = pts_world_top20.float()
+        new_level = torch.zeros((n_new, 1), device=device).float()
+        new_feat = torch.zeros((n_new, self.feat_dim), device=device).float()
+        new_scaling = torch.log(0.001 * torch.ones((n_new, 6), device=device).float())  # log-space
+        new_rotation = torch.zeros((n_new, 4), device=device).float()
+        new_rotation[:,0] = 1.0
+        new_opacities = inverse_sigmoid(0.1 * torch.ones((n_new,1), device=device).float())
+        new_offsets = torch.zeros((n_new, self.n_offsets, 3), device=device).float()
+        new_extra_level = torch.zeros(n_new, device=device).float()
+
+        # === Step3: 拼接到现有 anchor ===
+        d = {
+            "anchor": new_anchor,
+            "scaling": new_scaling,
+            "rotation": new_rotation,
+            "anchor_feat": new_feat,
+            "offset": new_offsets,
+            "opacity": new_opacities,
+        } 
+
+        # demon / accum
+        
+        temp_anchor_demon = torch.cat([self.anchor_demon, torch.zeros([new_opacities.shape[0], 1], device='cuda').float()], dim=0)
+        del self.anchor_demon
+        self.anchor_demon = temp_anchor_demon
+
+        temp_opacity_accum = torch.cat([self.opacity_accum, torch.zeros([new_opacities.shape[0], 1], device='cuda').float()], dim=0)
+        del self.opacity_accum
+        self.opacity_accum = temp_opacity_accum        
+
+
+        # update offset_denom
+        # self.offset_denom[offset_mask] = 0
+
+        
+        # self.anchor_demon = torch.cat([self.anchor_demon, torch.zeros((n_new,1), device=device)], dim=0)
+        # self.opacity_accum = torch.cat([self.opacity_accum, torch.zeros((n_new,1), device=device)], dim=0)
+
+        # 优化参数注册
+        optimizable_tensors = self.cat_tensors_to_optimizer(d)
+        self._anchor = optimizable_tensors["anchor"]
+        self._scaling = optimizable_tensors["scaling"]
+        self._rotation = optimizable_tensors["rotation"]
+        self._anchor_feat = optimizable_tensors["anchor_feat"]
+        self._offset = optimizable_tensors["offset"]
+        self._opacity = optimizable_tensors["opacity"]
+
+        self._level = torch.cat([self._level, new_level], dim=0)
+        self._extra_level = torch.cat([self._extra_level, new_extra_level], dim=0)
+
+
+        padding_offset_demon = torch.zeros([self.get_anchor.shape[0]*self.n_offsets - self.offset_denom.shape[0], 1],
+                                           dtype=torch.int32, 
+                                           device=self.offset_denom.device)
+        self.offset_denom = torch.cat([self.offset_denom, padding_offset_demon], dim=0)
+
+        # self.offset_gradient_accum[offset_mask] = 0
+        padding_offset_gradient_accum = torch.zeros([self.get_anchor.shape[0]*self.n_offsets - self.offset_gradient_accum.shape[0], 1],
+                                           dtype=torch.int32, 
+                                           device=self.offset_gradient_accum.device)
+        self.offset_gradient_accum = torch.cat([self.offset_gradient_accum, padding_offset_gradient_accum], dim=0)
+
+
+        torch.cuda.empty_cache()
+        
+        
+        
+    
+        # # 1) 基本量
+        # new_anchor = pts_world.float()                    # (N,3)
+        # exist_pos  = self._anchor.detach()               # (M,3)
+        # exist_feat = self._anchor_feat.detach()          # (M,C)
+        # exist_slog = self._scaling.detach()              # (M,6)  # log-空间
+        # exist_rot  = self._rotation.detach()             # (M,4)  # quat [w,x,y,z]
+        # exist_lvl  = self._level.detach().view(-1)       # (M,)
+        # M = exist_pos.shape[0]
+
+        # # 2) kNN 查找
+        # k = 1        # ← 若想平滑用 3；速度优先用 1
+        # d_knn, i_knn = self.knn_indices(exist_pos, new_anchor, k=k, chunk=8192)   # (N,k)
+
+        # # 3) 特征初始化
+        # if k == 1:
+        #     nn_idx = i_knn.view(-1)                                  # (N,)
+        #     new_feat = exist_feat[nn_idx]                            # (N,C)
+        #     # scale: 在 log 域复制最邻
+        #     new_scaling = exist_slog[nn_idx]                         # (N,6)
+        #     # rot: 直接复制并归一化以防万一
+        #     new_rotation = exist_rot[nn_idx]
+        #     new_rotation = new_rotation / (new_rotation.norm(dim=1, keepdim=True) + 1e-8)
+        #     # level: 复制最近邻的 level（更贴近局部细节）
+        #     new_level = exist_lvl[nn_idx].view(-1, 1).float()
+        # else:
+        #     # k>1：距离加权平均
+        #     eps = 1e-8
+        #     w = 1.0 / (d_knn + eps)                                  # (N,k)
+        #     w = w / (w.sum(dim=1, keepdim=True) + eps)
+
+        #     # feat: 加权平均
+        #     feat_knn = exist_feat[i_knn]                             # (N,k,C)
+        #     new_feat = (w.unsqueeze(-1) * feat_knn).sum(dim=1)       # (N,C)
+
+        #     # scaling: 先从 log 域解开到线性，再加权，再回 log
+        #     s_lin = torch.exp(exist_slog[i_knn])                     # (N,k,6)
+        #     s_lin = (w.unsqueeze(-1) * s_lin).sum(dim=1)             # (N,6)
+        #     new_scaling = torch.log(s_lin + eps)
+
+        #     # rotation: 四元数加权后归一化（近似）
+        #     rot_knn = exist_rot[i_knn]                                # (N,k,4)
+        #     new_rotation = (w.unsqueeze(-1) * rot_knn).sum(dim=1)     # (N,4)
+        #     new_rotation = new_rotation / (new_rotation.norm(dim=1, keepdim=True) + 1e-8)
+
+        #     # level: 加权平均后取四舍五入
+        #     lvl_knn = exist_lvl[i_knn]                                # (N,k)
+        #     new_level = (w * lvl_knn).sum(dim=1, keepdim=True).round()
+
+        # # 4) 其他字段
+        # # 建议 opacity 仍然低值起步，避免新增锚点一开始污染渲染
+        # new_opacities = inverse_sigmoid(0.05 * torch.ones((n_new,1), device=device).float())
+        # new_offsets   = torch.zeros((n_new, self.n_offsets, 3), device=device).float()
+        # new_extra_level = torch.zeros(n_new, device=device).float()
+
+        # # === （保留你后续的拼接到优化器/扩展 demon 等逻辑不变）===
+    
+    
+    
     def adjust_anchor(self, iteration, check_interval=100, success_threshold=0.8, grad_threshold=0.0002, update_ratio=0.5, extra_ratio=4.0, extra_up=0.25, min_opacity=0.005):
         # # adding anchors
         grads = self.offset_gradient_accum / self.offset_denom # [N*k, 1]
