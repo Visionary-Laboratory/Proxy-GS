@@ -6,15 +6,6 @@
 
 
 
-source /home/bingxing2/apps/package/pytorch/1.13.1+cu116_cp38/env.sh
-export PATH="/home/bingxing2/ailab/gaoyuanyuan_p/miniconda3/bin:$PATH"
-
-source ~/.bashrc
-
-
-export PATH="/home/bingxing2/ailab/gaoyuanyuan_p/miniconda3/bin:$PATH"
-
-conda init
 
 conda activate proxy-gs
 
@@ -62,24 +53,4 @@ python metrics.py  -m ouputs_cvpr/block_E_moutain020 -s data/small_city/street/p
 #     --ply_path data/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply \
 #     --ply_mesh block_E_from_mesh.ply --use_wandb 
 
-
-
-
-# export CUDA_VISIBLE_DEVICES=0
-# pip install submodules/diff-gaussian-rasterization
-# python train.py --eval -s data/alameda -m outputs/alameda-a100_octree0005_thred004  --resolution 2  --densify_grad_threshold 0.00004
-# python render.py -m output/nyc-a100_octree0001_thred08
-# python metrics.py -m output/nyc-a100_octree0001_thred08
-
-
-# python render.py -m outputs/nyc-a100_octree0005_thred008
-
-# export NCCL_ALGO=Ring
-# export NCCL_MAX_NCHANNELS=16
-# export NCCL_MIN_NCHANNELS=16export NCCL_DEBUG=INFO
-# export NCCL_TOPO_FILE=/home/bingxing2/apps/nccl/conf/dump.xml
-
-# export NCCL_IB_HCA=mlx5_0,mlx5_2
-# export NCCL_IB_GID_INDEX=3
-# export NCCL_IB_TIMEOUT=23
 # export NCCL_IB_RETRY_CNT=7

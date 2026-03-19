@@ -64,7 +64,7 @@ The following example uses the MatrixCity `block_E` scene. For reproducibility, 
 SCENE=proxy-gs/MatrixCity/small_city/street/pose/block_E
 IMAGES=proxy-gs/MatrixCity/small_city/street/train/small_city_road_horizon
 MESH=cvpr/block_E_from_mesh.ply
-POINTS=proxy-gs/MatrixCity/small_city/street/pose/block_E/points3d.ply
+POINTS=MatrixCity/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply
 DEPTH_DIR=mesh_depth_block_E
 OUTPUT=output/block_E
 ```
