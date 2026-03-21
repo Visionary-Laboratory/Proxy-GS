@@ -58,15 +58,79 @@ pip install ./submodules/simple-knn
 
 ## Training and Inference 
 
-The following example uses the MatrixCity `block_E` scene. For reproducibility, we recommend using a dedicated output directory such as `output/block_E`.
+### Dataset Structure
+
+The example below shows the expected structure of the MatrixCity small-city dataset:
+
+### Downloading MatrixCity Small City Dataset
+
+First, download all data under `small_city/` from MatrixCity via Hugging Face:
 
 ```bash
-SCENE=proxy-gs/MatrixCity/small_city/street/pose/block_E
+pip install huggingface_hub
+
+# Download the 'MatrixCity' dataset (will include all data)
+# To only download the 'small_city' portion, use '--pattern' to filter
+huggingface-cli download BoDai/MatrixCity --repo-type dataset --local-dir MatrixCity --include "small_city/**"
+```
+
+> Since the street data in the small city set is not originally split into blocks, running all images together may result in an excessively large dataset at once.  
+> To address this, I partitioned the `small_city_road_horizon` subset into multiple blocks.  
+> The corresponding `train` and `test` JSON files for each split are provided under `pose_block/`.  
+> Each block (e.g., `block_1`, `block_2`, ...) contains its own `transforms_train.json` and `transforms_test.json`, making it easier to train and evaluate on manageable subsets of the data.  
+
+
+
+To use the dataset, you need to combine the  data from Hugging Face's MatrixCity repository with the block-specific JSON splits we provide.
+
+#### Move the provided `pose_block` directory into the correct place within the dataset:
+```bash
+mv pose_block MatrixCity/small_city/street/
+```
+
+The overall data directory structure should look like:
+
+
+```text
+MatrixCity/
+└── small_city/
+    ├── aerial/
+    └── street/
+        ├── pose_block/
+        │   ├── block_1/
+        │   │   ├── transforms_test.json
+        │   │   └── transforms_train.json
+        │   ├── block_2/
+        │   │   ├── transforms_test.json
+        │   │   └── transforms_train.json
+        │   ├── block_3/
+        │   │   ├── transforms_test.json
+        │   │   └── transforms_train.json
+        │   ├── block_4/
+        │   │   ├── transforms_test.json
+        │   │   └── transforms_train.json
+        │   ├── block_5/
+        │   │   ├── transforms_test.json
+        │   │   └── transforms_train.json
+        │   
+        ├── train/
+        │   ├── small_city_road_down/
+        │   ├── small_city_road_horizon/
+        │   ├── small_city_road_outside/
+        │   └── small_city_road_vertical/
+        ├── test/
+        └── train_dense/
+```
+
+The following example uses the MatrixCity `block_5` scene. For reproducibility, we recommend using a dedicated output directory such as `output/block_5`.
+
+```bash
+SCENE=proxy-gs/MatrixCity/small_city/street/pose_block/block_5
 IMAGES=proxy-gs/MatrixCity/small_city/street/train/small_city_road_horizon
 MESH=cvpr/block_E_from_mesh.ply
 POINTS=MatrixCity/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply
-DEPTH_DIR=mesh_depth_block_E
-OUTPUT=output/block_E
+DEPTH_DIR=mesh_depth_block_5
+OUTPUT=output/block_5
 ```
 
 ### 1. Render mesh depth and save caches
@@ -104,7 +168,7 @@ Checkpoints will be saved under `${OUTPUT}/point_cloud`.
 
 
 
-#### 4.  build `ProxyGS-Vulkan-Cuda-Interop` ()
+#### 4.  build `ProxyGS-Vulkan-Cuda-Interop`
 
 **This optional Vulkan backend currently requires Ubuntu Linux and an NVIDIA RTX-series compute GPU.**
 
