@@ -476,8 +476,8 @@ def prefilter_voxel(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch
     if pipe.compute_cov3D_python:
         cov3D_precomp = pc.get_covariance(scaling_modifier)
     else:
-        scales = pc.get_scaling[pc._anchor_mask]
-        rotations = pc.get_rotation[pc._anchor_mask]
+        scales = pc.get_scaling
+        rotations = pc.get_rotation
 
     radii_pure = rasterizer.visible_filter(means3D = means3D,
         scales = scales[:,:3],
