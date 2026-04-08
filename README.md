@@ -122,16 +122,17 @@ MatrixCity/
         └── train_dense/
 ```
 
-The following example uses the MatrixCity `block_5` scene. For reproducibility, we recommend using a dedicated output directory such as `output/block_5`.
+The following example uses the MatrixCity `block_5` scene. For reproducibility, we recommend using a dedicated output directory such as `output/block_5`. 
 
 ```bash
 SCENE=proxy-gs/MatrixCity/small_city/street/pose_block/block_5
 IMAGES=proxy-gs/MatrixCity/small_city/street/train/small_city_road_horizon
-MESH=cvpr/block_E_from_mesh.ply
+MESH=mesh/tsdf_fusion_post_block5.ply
 POINTS=MatrixCity/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aerial/Block_E.ply
 DEPTH_DIR=mesh_depth_block_5
 OUTPUT=output/block_5
 ```
+In addition to obtaining the mesh using your own preferred method, you may also directly use the processed meshes we have released here:[Hugging Face dataset](https://huggingface.co/datasets/yy456/Proxy-GS/tree/main).
 
 ### 1. Render mesh depth and save caches
 
