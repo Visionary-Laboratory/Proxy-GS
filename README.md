@@ -1,5 +1,5 @@
 <div align="center">
-<h1> [CVPR 2026] Proxy-GS: Unified Occlusion Priors for Training and Inference in Structured 3D Gaussian Splatting
+<h1> [CVPR 2026 Oral] Proxy-GS: Unified Occlusion Priors for Training and Inference in Structured 3D Gaussian Splatting
 </h1>
 
 <!-- <a href="https://www.arxiv.org/pdf/2509.24421" target="_blank" rel="noopener noreferrer">
@@ -222,20 +222,15 @@ This project builds upon several excellent open-source repositories. We sincerel
 - [3D Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting): *3D Gaussian Splatting for Real-Time Radiance Field Rendering*
 - [vk_lod_clusters](https://github.com/nvpro-samples/vk_lod_clusters/tree/main): *Sample for cluster-based continuous level of detail rasterization or ray tracing*
 
+## Citation
 
-
-
-
-<!-- ## BibTeX
+If you find this repository useful, please consider citing:
 
 ```bibtex
-@misc{gao2025citygsxscalablearchitectureefficient,
-      title={CityGS-X: A Scalable Architecture for Efficient and Geometrically Accurate Large-Scale Scene Reconstruction}, 
-      author={Yuanyuan Gao and Hao Li and Jiaqi Chen and Zhengyu Zou and Zhihang Zhong and Dingwen Zhang and Xiao Sun and Junwei Han},
-      year={2025},
-      eprint={2503.23044},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2503.23044}, 
+@article{gao2025proxy,
+  title={Proxy-GS: Unified Occlusion Priors for Training and Inference in Structured 3D Gaussian Splatting},
+  author={Gao, Yuanyuan and Gong, Yuning and Liu, Yifei and Jingfeng, Li and Zhang, Dingwen and Zhang, Yanci and Xu, Dan and Sun, Xiao and Zhong, Zhihang},
+  journal={arXiv preprint arXiv:2509.24421},
+  year={2025}
 }
-``` -->
+```
