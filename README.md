@@ -1,5 +1,5 @@
 <div align="center">
-<h1> [CVPR 2026 Oral] Proxy-GS: Unified Occlusion Priors for Training and Inference in Structured 3D Gaussian Splatting
+<h1> [CVPR 2026 Oral, Award Candidate] Proxy-GS: Unified Occlusion Priors for Training and Inference in Structured 3D Gaussian Splatting
 </h1>
 
 <!-- <a href="https://www.arxiv.org/pdf/2509.24421" target="_blank" rel="noopener noreferrer">
