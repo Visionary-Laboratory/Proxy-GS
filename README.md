@@ -31,7 +31,6 @@ This repo contains official implementations of Proxy-GS, ⭐ us if you like it!
 ## Todo List
 - 🔥🔥 News: ```2026/2/26```: Proxy-GS has been accepted to CVPR 2026.
 - [✓] Release the training & inference code of Proxy-GS.
-- [ ] Release all model checkpoints. 
 
 ## Installation
 
@@ -132,7 +131,7 @@ POINTS=MatrixCity/small_city/aerial/small_city_pointcloud/point_cloud_ds20/aeria
 DEPTH_DIR=mesh_depth_block_5
 OUTPUT=output/block_5
 ```
-In addition to obtaining the mesh using your own preferred method, you may also directly use the processed meshes we have released here:[Hugging Face dataset](https://huggingface.co/datasets/yy456/Proxy-GS/tree/main).
+In addition to obtaining the mesh using your own preferred method, you may also directly use the processed meshes we have released here: [Hugging Face dataset](https://huggingface.co/datasets/yy456/Proxy-GS/tree/main).
 
 ### 1. Render mesh depth and save caches
 
